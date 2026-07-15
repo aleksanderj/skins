@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { StateStorage } from "zustand/middleware";
 import { persistedStateSchema } from "../validation/schemas";
+import { migratePersistedState, CURRENT_SCHEMA_VERSION } from "./migrations";
 
 /**
  * Tracks whether the most recent hydration attempt discarded corrupt data,
@@ -19,8 +20,10 @@ export function acknowledgeCorruptDataReset(): void {
 
 /**
  * Validates persisted JSON against the app's Zod schema before handing it
- * to zustand's persist middleware. Invalid or corrupted data is treated as
- * "no saved state" rather than thrown, so the app always boots cleanly.
+ * to zustand's persist middleware. Legacy (pre-schemaVersion) state is
+ * migrated forward first. Invalid or corrupted data — before or after
+ * migration — is treated as "no saved state" rather than thrown, so the
+ * app always boots cleanly.
  */
 export const validatedAsyncStorage: StateStorage = {
   getItem: async (name) => {
@@ -29,12 +32,13 @@ export const validatedAsyncStorage: StateStorage = {
 
     try {
       const envelope = JSON.parse(raw);
-      const result = persistedStateSchema.safeParse(envelope.state);
+      const migratedState = migratePersistedState(envelope.state);
+      const result = persistedStateSchema.safeParse(migratedState);
       if (!result.success) {
         lastHydrationWasReset = true;
         return null;
       }
-      return raw;
+      return JSON.stringify({ ...envelope, state: migratedState });
     } catch {
       lastHydrationWasReset = true;
       return null;
@@ -47,3 +51,5 @@ export const validatedAsyncStorage: StateStorage = {
     await AsyncStorage.removeItem(name);
   },
 };
+
+export { CURRENT_SCHEMA_VERSION };

@@ -28,7 +28,8 @@ export function calculateHoleWinner(entries: HoleScoreEntry[]): HoleWinnerResult
  */
 export function computeHoleScores(round: Round, holeNumber: number): HoleScoreEntry[] | null {
   const hole = round.holes.find((h) => h.number === holeNumber);
-  if (!hole) return null;
+  const skinsConfig = round.skinsConfig;
+  if (!hole || !skinsConfig) return null;
 
   const entries: HoleScoreEntry[] = [];
   for (const player of round.players) {
@@ -39,7 +40,7 @@ export function computeHoleScores(round: Round, holeNumber: number): HoleScoreEn
       return null;
     }
 
-    if (round.scoringMode === "gross") {
+    if (skinsConfig.scoringMode === "gross") {
       entries.push({ playerId: player.id, score: scoreRecord.grossScore });
     } else {
       const playingHandicap = calculatePlayingHandicap(player.handicap, round.holeCount);
@@ -59,6 +60,9 @@ export function computeHoleScores(round: Round, holeNumber: number): HoleScoreEn
  * hole's carry (if tied) is left unresolved and surfaced on that result.
  */
 export function calculateSkinResults(round: Round): SkinResult[] {
+  const skinsConfig = round.skinsConfig;
+  if (!skinsConfig) return [];
+
   const results: SkinResult[] = [];
   let carriedSkins = 0;
 
@@ -77,11 +81,11 @@ export function calculateSkinResults(round: Round): SkinResult[] {
         winnerPlayerId,
         tiedPlayerIds: [],
         skinsWon: skinsAtStake,
-        monetaryValueCents: skinsAtStake * round.stakePerSkinCents,
+        monetaryValueCents: skinsAtStake * skinsConfig.stakePerSkinCents,
         carriedIntoNextHoleCents: 0,
       });
       carriedSkins = 0;
-    } else if (round.carryoversEnabled) {
+    } else if (skinsConfig.carryoversEnabled) {
       carriedSkins = skinsAtStake;
       results.push({
         holeNumber: hole.number,
@@ -89,7 +93,7 @@ export function calculateSkinResults(round: Round): SkinResult[] {
         tiedPlayerIds,
         skinsWon: 0,
         monetaryValueCents: 0,
-        carriedIntoNextHoleCents: carriedSkins * round.stakePerSkinCents,
+        carriedIntoNextHoleCents: carriedSkins * skinsConfig.stakePerSkinCents,
       });
     } else {
       results.push({

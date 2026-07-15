@@ -10,9 +10,18 @@ import { SecondaryButton } from "../../../src/components/SecondaryButton";
 import { SettlementCard } from "../../../src/components/SettlementCard";
 import { MoneyAmount } from "../../../src/components/MoneyAmount";
 import { PlayerAvatar } from "../../../src/components/PlayerAvatar";
+import { MatchResultCard } from "../../../src/components/MatchResultCard";
+import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
 import { EmptyState } from "../../../src/components/EmptyState";
-import { getPlayerBalances, getPlayerName, getSettlements } from "../../../src/features/rounds/selectors";
+import {
+  getMatchPlaySideName,
+  getPlayerBalances,
+  getPlayerName,
+  getRoundMatchPlaySides,
+  getSettlements,
+} from "../../../src/features/rounds/selectors";
 import { buildShareText } from "../../../src/features/settlements/shareText";
+import { formatCurrency } from "../../../src/utils/currency";
 import { colors, fontSize, spacing } from "../../../src/constants/theme";
 
 export default function SettlementScreen() {
@@ -40,6 +49,8 @@ export default function SettlementScreen() {
   const balances = [...getPlayerBalances(round)].sort((a, b) => b.balanceCents - a.balanceCents);
   const settlements = getSettlements(round);
   const winner = balances[0] && balances[0].balanceCents > 0 ? balances[0] : null;
+  const isMatchPlay = round.format === "match_play";
+  const sides = isMatchPlay ? getRoundMatchPlaySides(round) : null;
 
   const togglePayment = (index: number) => {
     Haptics.selectionAsync().catch(() => {});
@@ -61,12 +72,50 @@ export default function SettlementScreen() {
         <Text style={styles.headline}>Round Complete</Text>
         <Text style={styles.subheadline}>{round.courseName}</Text>
 
-        {winner ? (
+        {isMatchPlay && sides && round.matchPlayResult ? (
+          <View style={styles.matchSummaryWrapper}>
+            {round.matchPlayResult.structure === "nassau" ? (
+              (round.matchPlayResult.nassauMatches ?? []).map((match) => (
+                <NassauStatusCard
+                  key={match.segment}
+                  title={match.segment === "front" ? "Front Nine" : match.segment === "back" ? "Back Nine" : "Overall"}
+                  statusText=""
+                  resultLabel={match.resultLabel}
+                  winnerName={match.winnerSideId ? getMatchPlaySideName(round, match.winnerSideId) : null}
+                  stakeCents={round.matchPlayConfig?.stakeCents ?? 0}
+                  currency={round.currency}
+                />
+              ))
+            ) : round.matchPlayResult.singleMatch ? (
+              <MatchResultCard
+                winnerName={
+                  round.matchPlayResult.singleMatch.winnerSideId
+                    ? getMatchPlaySideName(round, round.matchPlayResult.singleMatch.winnerSideId)
+                    : null
+                }
+                loserName={
+                  round.matchPlayResult.singleMatch.winnerSideId
+                    ? getMatchPlaySideName(
+                        round,
+                        round.matchPlayResult.singleMatch.winnerSideId === sides.sideA.id ? sides.sideB.id : sides.sideA.id
+                      )
+                    : null
+                }
+                resultLabel={round.matchPlayResult.singleMatch.resultLabel}
+                isHalved={round.matchPlayResult.singleMatch.isHalved}
+              />
+            ) : null}
+            <Text style={styles.stakeLine}>
+              Stake: {formatCurrency(round.matchPlayConfig?.stakeCents ?? 0, round.currency)}
+              {round.matchPlayConfig?.structure === "nassau" ? " per match" : ""}
+            </Text>
+          </View>
+        ) : winner ? (
           <Card style={styles.winnerCard}>
             <PlayerAvatar name={getPlayerName(round, winner.playerId)} index={0} size={56} />
             <Text style={styles.winnerName}>{getPlayerName(round, winner.playerId)}</Text>
             <Text style={styles.winnerSkins}>
-              {winner.skinsWon} skin{winner.skinsWon === 1 ? "" : "s"} won
+              {winner.skinsWon ?? 0} skin{(winner.skinsWon ?? 0) === 1 ? "" : "s"} won
             </Text>
             <MoneyAmount cents={winner.balanceCents} currency={round.currency} size="xl" />
           </Card>
@@ -107,17 +156,21 @@ export default function SettlementScreen() {
           ))}
         </Card>
 
-        <Text style={styles.sectionTitle}>Skin summary</Text>
-        <Card>
-          {balances.map((b) => (
-            <View key={b.playerId} style={styles.balanceRow}>
-              <Text style={styles.balanceName}>{getPlayerName(round, b.playerId)}</Text>
-              <Text style={styles.skinCount}>
-                {b.skinsWon} skin{b.skinsWon === 1 ? "" : "s"}
-              </Text>
-            </View>
-          ))}
-        </Card>
+        {!isMatchPlay ? (
+          <>
+            <Text style={styles.sectionTitle}>Skin summary</Text>
+            <Card>
+              {balances.map((b) => (
+                <View key={b.playerId} style={styles.balanceRow}>
+                  <Text style={styles.balanceName}>{getPlayerName(round, b.playerId)}</Text>
+                  <Text style={styles.skinCount}>
+                    {b.skinsWon ?? 0} skin{(b.skinsWon ?? 0) === 1 ? "" : "s"}
+                  </Text>
+                </View>
+              ))}
+            </Card>
+          </>
+        ) : null}
 
         <SecondaryButton label="Share Results" onPress={handleShare} style={styles.actionButton} />
         <PrimaryButton label="Return Home" onPress={() => router.replace("/")} style={styles.actionButton} />
@@ -147,6 +200,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
     marginBottom: spacing.lg,
+  },
+  matchSummaryWrapper: {
+    marginBottom: spacing.lg,
+  },
+  stakeLine: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: spacing.xs,
   },
   winnerCard: {
     alignItems: "center",

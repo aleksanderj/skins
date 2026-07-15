@@ -17,6 +17,8 @@ export default function HomeScreen() {
   const roundHistory = useAppStore((s) => s.roundHistory);
   const abandonRound = useAppStore((s) => s.abandonRound);
   const loadDemoRound = useAppStore((s) => s.loadDemoRound);
+  const loadIndividualMatchPlayDemo = useAppStore((s) => s.loadIndividualMatchPlayDemo);
+  const loadTeamNassauDemo = useAppStore((s) => s.loadTeamNassauDemo);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const recentRounds = roundHistory.slice(0, 4);
@@ -43,10 +45,14 @@ export default function HomeScreen() {
           <Text style={styles.tagline}>Play the round. We handle the math.</Text>
         </View>
 
-        <PrimaryButton label="Start a Skins Game" onPress={handleStartRound} style={styles.cta} />
+        <PrimaryButton label="Start a Game" onPress={handleStartRound} style={styles.cta} />
 
         {__DEV__ ? (
-          <SecondaryButton label="Load Demo Round" onPress={loadDemoRound} style={styles.demoButton} />
+          <View style={styles.demoButtonGroup}>
+            <SecondaryButton label="Load Skins Demo" onPress={loadDemoRound} style={styles.demoButton} />
+            <SecondaryButton label="Load Individual Match Demo" onPress={loadIndividualMatchPlayDemo} style={styles.demoButton} />
+            <SecondaryButton label="Load Team Nassau Demo" onPress={loadTeamNassauDemo} style={styles.demoButton} />
+          </View>
         ) : null}
 
         {activeRound ? (
@@ -73,7 +79,7 @@ export default function HomeScreen() {
           <EmptyState
             icon="golf-outline"
             title="Ready for your first round"
-            message="Start a Skins game to add players, enter scores, and see who owes who."
+            message="Start a Skins or Match Play game to add players, enter scores, and see who owes who."
           />
         ) : null}
       </ScrollView>
@@ -118,8 +124,12 @@ const styles = StyleSheet.create({
   cta: {
     marginBottom: spacing.md,
   },
-  demoButton: {
+  demoButtonGroup: {
+    gap: spacing.sm,
     marginBottom: spacing.lg,
+  },
+  demoButton: {
+    marginBottom: 0,
   },
   section: {
     marginTop: spacing.lg,

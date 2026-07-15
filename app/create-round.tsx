@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -17,15 +17,33 @@ import { Card } from "../src/components/Card";
 import { PrimaryButton } from "../src/components/PrimaryButton";
 import { SecondaryButton } from "../src/components/SecondaryButton";
 import { SegmentedControl } from "../src/components/SegmentedControl";
+import { GameFormatCard } from "../src/components/GameFormatCard";
 import { StakeSelector } from "../src/features/rounds/StakeSelector";
+import { MatchPlaySettingsSection } from "../src/features/rounds/MatchPlaySettingsSection";
+import { TeamAssignmentSection } from "../src/features/rounds/TeamAssignmentSection";
 import { PlayerFormRow, type PlayerDraft } from "../src/features/rounds/PlayerFormRow";
 import { CourseSetupSection } from "../src/features/rounds/CourseSetupSection";
 import { generateDefaultHoles } from "../src/utils/course";
 import { generateId } from "../src/utils/id";
 import { colors, fontSize, spacing } from "../src/constants/theme";
 import { MAX_PLAYERS, MIN_PLAYERS } from "../src/constants/golf";
-import { createHolesArraySchema, gameConfigSchema, playersArraySchema, roundSetupSchema } from "../src/validation/schemas";
-import type { Hole, ScoringMode } from "../src/types";
+import {
+  createHolesArraySchema,
+  createMatchPlaySetupSchema,
+  gameConfigSchema,
+  playersArraySchema,
+  roundSetupSchema,
+} from "../src/validation/schemas";
+import type {
+  GameFormat,
+  HandicapAllowancePercent,
+  Hole,
+  MatchPlayMode,
+  MatchPlayStructure,
+  MatchPlayTieRule,
+  ScoringMode,
+} from "../src/types";
+import { formatCurrency } from "../src/utils/currency";
 
 function makeBlankPlayer(): PlayerDraft {
   return { id: generateId("draft"), name: "", handicapText: "0" };
@@ -36,22 +54,67 @@ export default function CreateRoundScreen() {
   const settings = useAppStore((s) => s.settings);
   const createRound = useAppStore((s) => s.createRound);
 
+  const [format, setFormat] = useState<GameFormat>("skins");
   const [courseName, setCourseName] = useState("");
   const [roundName, setRoundName] = useState("");
   const [holeCount, setHoleCount] = useState<9 | 18>(18);
   const [players, setPlayers] = useState<PlayerDraft[]>([makeBlankPlayer(), makeBlankPlayer()]);
   const [holes, setHoles] = useState<Hole[]>(() => generateDefaultHoles(18));
-  const [scoringMode, setScoringMode] = useState<ScoringMode>(settings.defaultScoringMode);
-  const [stakePerSkinCents, setStakePerSkinCents] = useState(settings.defaultStakePerSkinCents);
-  const [carryoversEnabled, setCarryoversEnabled] = useState(settings.defaultCarryoversEnabled);
+
+  // Skins settings
+  const [scoringMode, setScoringMode] = useState<ScoringMode>(settings.skinsDefaults.scoringMode);
+  const [stakePerSkinCents, setStakePerSkinCents] = useState(settings.skinsDefaults.stakePerSkinCents);
+  const [carryoversEnabled, setCarryoversEnabled] = useState(settings.skinsDefaults.carryoversEnabled);
+
+  // Match Play settings
+  const [matchPlayMode, setMatchPlayMode] = useState<MatchPlayMode>(settings.matchPlayDefaults.mode);
+  const [matchPlayScoringMode, setMatchPlayScoringMode] = useState<ScoringMode>(settings.matchPlayDefaults.scoringMode);
+  const [handicapAllowancePercent, setHandicapAllowancePercent] = useState<HandicapAllowancePercent>(
+    settings.matchPlayDefaults.handicapAllowancePercent
+  );
+  const [matchPlayStructure, setMatchPlayStructure] = useState<MatchPlayStructure>(settings.matchPlayDefaults.structure);
+  const [matchPlayStakeCents, setMatchPlayStakeCents] = useState(settings.matchPlayDefaults.stakeCents);
+  const [matchPlayTieRule, setMatchPlayTieRule] = useState<MatchPlayTieRule>(settings.matchPlayDefaults.tieRule);
+  const [teamAName, setTeamAName] = useState("Team A");
+  const [teamBName, setTeamBName] = useState("Team B");
+  const [teamAIds, setTeamAIds] = useState<string[]>([]);
+  const [teamBIds, setTeamBIds] = useState<string[]>([]);
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [playerErrors, setPlayerErrors] = useState<Record<string, string>>({});
 
-  const defaultName = courseName.trim() ? `Skins at ${courseName.trim()}` : "";
+  const defaultName = courseName.trim()
+    ? `${format === "skins" ? "Skins" : "Match Play"} at ${courseName.trim()}`
+    : "";
+
+  // Keep player count and team assignment in sync with format/mode.
+  useEffect(() => {
+    if (format !== "match_play") return;
+    const targetCount = matchPlayMode === "individual" ? 2 : 4;
+    setPlayers((prev) => {
+      if (prev.length === targetCount) return prev;
+      if (prev.length < targetCount) {
+        return [...prev, ...Array.from({ length: targetCount - prev.length }, makeBlankPlayer)];
+      }
+      return prev.slice(0, targetCount);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [format, matchPlayMode]);
+
+  useEffect(() => {
+    if (format !== "match_play" || matchPlayMode !== "team") return;
+    if (players.length !== 4) return;
+    setTeamAIds([players[0].id, players[1].id]);
+    setTeamBIds([players[2].id, players[3].id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [format, matchPlayMode, players.length]);
 
   const handleHoleCountChange = (value: 9 | 18) => {
     setHoleCount(value);
     setHoles(generateDefaultHoles(value));
+    if (value === 9 && matchPlayStructure === "nassau") {
+      setMatchPlayStructure("single_match");
+    }
   };
 
   const updatePlayer = (id: string, updates: Partial<PlayerDraft>) => {
@@ -78,12 +141,36 @@ export default function CreateRoundScreen() {
     });
   };
 
+  const handleMovePlayerToOtherTeam = (playerId: string) => {
+    if (teamAIds.includes(playerId)) {
+      const [swapOut, ...restB] = teamBIds;
+      setTeamAIds((prev) => [...prev.filter((id) => id !== playerId), ...(swapOut ? [swapOut] : [])]);
+      setTeamBIds(swapOut ? [...restB, playerId] : [...teamBIds, playerId]);
+    } else if (teamBIds.includes(playerId)) {
+      const [swapOut, ...restA] = teamAIds;
+      setTeamBIds((prev) => [...prev.filter((id) => id !== playerId), ...(swapOut ? [swapOut] : [])]);
+      setTeamAIds(swapOut ? [...restA, playerId] : [...teamAIds, playerId]);
+    }
+  };
+
+  const handleReorderWithinTeam = (playerId: string, side: "A" | "B", direction: -1 | 1) => {
+    const setter = side === "A" ? setTeamAIds : setTeamBIds;
+    setter((prev) => {
+      const idx = prev.indexOf(playerId);
+      const target = idx + direction;
+      if (idx < 0 || target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return next;
+    });
+  };
+
   const handleSubmit = () => {
     const nextErrors: Record<string, string> = {};
     const nextPlayerErrors: Record<string, string> = {};
 
     const setupResult = roundSetupSchema.safeParse({
-      name: roundName.trim() || defaultName || "Skins Round",
+      name: roundName.trim() || defaultName || "New Round",
       courseName,
       holeCount,
     });
@@ -109,14 +196,36 @@ export default function CreateRoundScreen() {
       }
     }
 
-    const configResult = gameConfigSchema.safeParse({ scoringMode, stakePerSkinCents, carryoversEnabled });
-    if (!configResult.success) {
-      nextErrors.stake = configResult.error.issues[0]?.message ?? "Invalid game settings";
-    }
-
     const holesResult = createHolesArraySchema(holeCount).safeParse(holes);
     if (!holesResult.success) {
       nextErrors.holes = holesResult.error.issues[0]?.message ?? "Check hole setup";
+    }
+
+    if (format === "skins") {
+      const configResult = gameConfigSchema.safeParse({ scoringMode, stakePerSkinCents, carryoversEnabled });
+      if (!configResult.success) {
+        nextErrors.stake = configResult.error.issues[0]?.message ?? "Invalid game settings";
+      }
+    } else {
+      const teams =
+        matchPlayMode === "team"
+          ? [
+              { id: generateId("team"), name: teamAName.trim() || "Team A", playerIds: teamAIds },
+              { id: generateId("team"), name: teamBName.trim() || "Team B", playerIds: teamBIds },
+            ]
+          : undefined;
+      const matchPlayResult = createMatchPlaySetupSchema(holeCount, players.map((p) => p.id)).safeParse({
+        mode: matchPlayMode,
+        scoringMode: matchPlayScoringMode,
+        handicapAllowancePercent,
+        stakeCents: matchPlayStakeCents,
+        tieRule: matchPlayTieRule,
+        structure: matchPlayStructure,
+        teams,
+      });
+      if (!matchPlayResult.success) {
+        nextErrors.matchPlay = matchPlayResult.error.issues[0]?.message ?? "Check Match Play settings";
+      }
     }
 
     setErrors(nextErrors);
@@ -127,15 +236,24 @@ export default function CreateRoundScreen() {
     }
 
     createRound({
-      name: roundName.trim() || defaultName || "Skins Round",
+      name: roundName.trim() || defaultName || "New Round",
       courseName: courseName.trim(),
       holeCount,
       players: parsedPlayers.map((p) => ({ name: p.name, handicap: p.handicap })),
       holes,
+      format,
+      currency: settings.currency,
       scoringMode,
       stakePerSkinCents,
       carryoversEnabled,
-      currency: settings.currency,
+      matchPlayMode,
+      matchPlayScoringMode,
+      handicapAllowancePercent,
+      matchPlayStructure,
+      matchPlayStakeCents,
+      matchPlayTieRule,
+      teamNames: [teamAName.trim() || "Team A", teamBName.trim() || "Team B"],
+      teamAssignments: players.map((p) => ({ teamIndex: (teamAIds.includes(p.id) ? 0 : 1) as 0 | 1 })),
     });
 
     const newRound = useAppStore.getState().activeRound;
@@ -144,14 +262,33 @@ export default function CreateRoundScreen() {
     }
   };
 
+  const maxPlayersForFormat = format === "match_play" && matchPlayMode === "individual" ? 2 : format === "match_play" ? 4 : MAX_PLAYERS;
+  const minPlayersForFormat = format === "match_play" ? maxPlayersForFormat : MIN_PLAYERS;
+  const playersLocked = format === "match_play";
+
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <AppHeader title="New Round" onBack={() => router.back()} />
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Game format</Text>
+            <GameFormatCard
+              icon="golf"
+              title="Skins"
+              description="Win individual holes and carry tied skins forward."
+              selected={format === "skins"}
+              onPress={() => setFormat("skins")}
+            />
+            <GameFormatCard
+              icon="trophy"
+              title="Match Play"
+              description="Win holes to go up in the match."
+              selected={format === "match_play"}
+              onPress={() => setFormat("match_play")}
+            />
+          </Card>
+
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Round details</Text>
 
@@ -170,7 +307,7 @@ export default function CreateRoundScreen() {
             <TextInput
               value={roundName}
               onChangeText={setRoundName}
-              placeholder={defaultName || "Skins Round"}
+              placeholder={defaultName || "New Round"}
               placeholderTextColor={colors.textSecondary}
               style={styles.input}
               accessibilityLabel="Round name"
@@ -195,17 +332,22 @@ export default function CreateRoundScreen() {
             <View style={styles.playersHeader}>
               <Text style={styles.sectionTitle}>Players</Text>
               <Text style={styles.playerCount}>
-                {players.length} of {MAX_PLAYERS}
+                {players.length} of {playersLocked ? maxPlayersForFormat : MAX_PLAYERS}
               </Text>
             </View>
             {errors.players ? <Text style={styles.error}>{errors.players}</Text> : null}
+            {playersLocked ? (
+              <Text style={styles.hint}>
+                {matchPlayMode === "individual" ? "Individual Match Play needs exactly 2 players." : "Team Match Play needs exactly 4 players."}
+              </Text>
+            ) : null}
 
             {players.map((player, index) => (
               <PlayerFormRow
                 key={player.id}
                 player={player}
                 index={index}
-                canRemove={players.length > MIN_PLAYERS}
+                canRemove={!playersLocked && players.length > MIN_PLAYERS}
                 canMoveUp={index > 0}
                 canMoveDown={index < players.length - 1}
                 onChangeName={(name) => updatePlayer(player.id, { name })}
@@ -217,47 +359,107 @@ export default function CreateRoundScreen() {
               />
             ))}
 
-            <SecondaryButton
-              label="+ Add player"
-              onPress={addPlayer}
-              disabled={players.length >= MAX_PLAYERS}
-              style={styles.addPlayerButton}
-            />
+            {!playersLocked ? (
+              <SecondaryButton
+                label="+ Add player"
+                onPress={addPlayer}
+                disabled={players.length >= MAX_PLAYERS}
+                style={styles.addPlayerButton}
+              />
+            ) : null}
           </Card>
+
+          {format === "match_play" && matchPlayMode === "team" ? (
+            <Card style={styles.card}>
+              <TeamAssignmentSection
+                players={players}
+                teamAIds={teamAIds}
+                teamBIds={teamBIds}
+                teamAName={teamAName}
+                teamBName={teamBName}
+                onChangeTeamAName={setTeamAName}
+                onChangeTeamBName={setTeamBName}
+                onMovePlayer={handleMovePlayerToOtherTeam}
+                onReorder={handleReorderWithinTeam}
+                error={errors.matchPlay}
+              />
+            </Card>
+          ) : null}
 
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Game settings</Text>
 
-            <Text style={styles.label}>Scoring</Text>
-            <SegmentedControl
-              value={scoringMode}
-              onChange={setScoringMode}
-              options={[
-                { value: "gross", label: "Gross" },
-                { value: "net", label: "Net" },
-              ]}
-            />
+            {format === "skins" ? (
+              <>
+                <Text style={styles.label}>Scoring</Text>
+                <SegmentedControl
+                  value={scoringMode}
+                  onChange={setScoringMode}
+                  options={[
+                    { value: "gross", label: "Gross" },
+                    { value: "net", label: "Net" },
+                  ]}
+                />
 
-            <Text style={styles.label}>Stake per skin</Text>
-            <StakeSelector valueCents={stakePerSkinCents} onChange={setStakePerSkinCents} currency={settings.currency} />
-            {errors.stake ? <Text style={styles.error}>{errors.stake}</Text> : null}
+                <Text style={styles.label}>Stake per skin</Text>
+                <StakeSelector valueCents={stakePerSkinCents} onChange={setStakePerSkinCents} currency={settings.currency} />
+                {errors.stake ? <Text style={styles.error}>{errors.stake}</Text> : null}
 
-            <View style={styles.switchRow}>
-              <View style={styles.flexShrink}>
-                <Text style={styles.label}>Carryovers</Text>
-                <Text style={styles.hint}>Tied holes roll the skin into the next hole.</Text>
-              </View>
-              <Switch
-                value={carryoversEnabled}
-                onValueChange={setCarryoversEnabled}
-                trackColor={{ false: colors.border, true: colors.accent }}
-                accessibilityLabel="Carryovers enabled"
-              />
-            </View>
+                <View style={styles.switchRow}>
+                  <View style={styles.flexShrink}>
+                    <Text style={styles.label}>Carryovers</Text>
+                    <Text style={styles.hint}>Tied holes roll the skin into the next hole.</Text>
+                  </View>
+                  <Switch
+                    value={carryoversEnabled}
+                    onValueChange={setCarryoversEnabled}
+                    trackColor={{ false: colors.border, true: colors.accent }}
+                    accessibilityLabel="Carryovers enabled"
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <MatchPlaySettingsSection
+                  mode={matchPlayMode}
+                  onModeChange={setMatchPlayMode}
+                  scoringMode={matchPlayScoringMode}
+                  onScoringModeChange={setMatchPlayScoringMode}
+                  handicapAllowancePercent={handicapAllowancePercent}
+                  onHandicapAllowanceChange={setHandicapAllowancePercent}
+                  structure={matchPlayStructure}
+                  onStructureChange={setMatchPlayStructure}
+                  holeCount={holeCount}
+                  stakeCents={matchPlayStakeCents}
+                  onStakeChange={setMatchPlayStakeCents}
+                  tieRule={matchPlayTieRule}
+                  onTieRuleChange={setMatchPlayTieRule}
+                  currency={settings.currency}
+                />
+                {errors.matchPlay ? <Text style={styles.error}>{errors.matchPlay}</Text> : null}
+
+                <View style={styles.exposureBox}>
+                  {matchPlayStructure === "single_match" ? (
+                    <Text style={styles.exposureText}>
+                      Match value: {formatCurrency(matchPlayStakeCents, settings.currency)}
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={styles.exposureText}>
+                        Three matches at {formatCurrency(matchPlayStakeCents, settings.currency)} each
+                      </Text>
+                      <Text style={styles.exposureSubtext}>
+                        Maximum total exposure: {formatCurrency(matchPlayStakeCents * 3, settings.currency)}
+                      </Text>
+                    </>
+                  )}
+                </View>
+              </>
+            )}
           </Card>
 
           <Text style={styles.disclaimer}>
-            Skins tracks friendly bets and calculates settlements. Payments are handled outside the app.
+            The app tracks friendly bets and calculates settlements. Payments are handled outside the app.
           </Text>
 
           <PrimaryButton label="Start Round" onPress={handleSubmit} style={styles.startButton} />
@@ -337,6 +539,22 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  exposureBox: {
+    marginTop: spacing.lg,
+    padding: spacing.md,
+    borderRadius: 12,
+    backgroundColor: colors.light,
+  },
+  exposureText: {
+    fontSize: fontSize.md,
+    fontWeight: "700",
+    color: colors.primaryDark,
+  },
+  exposureSubtext: {
+    fontSize: fontSize.sm,
     color: colors.textSecondary,
     marginTop: 2,
   },

@@ -9,15 +9,22 @@ import { Card } from "../../../src/components/Card";
 import { PrimaryButton } from "../../../src/components/PrimaryButton";
 import { SegmentedControl } from "../../../src/components/SegmentedControl";
 import { MoneyAmount } from "../../../src/components/MoneyAmount";
+import { MatchResultCard } from "../../../src/components/MatchResultCard";
+import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
 import { EmptyState } from "../../../src/components/EmptyState";
 import {
+  getMatchPlaySideName,
   getPlayerBalances,
+  getRoundMatchPlaySides,
   getUnresolvedCarryoverCents,
+  isAwaitingPlayoff,
   isRoundReadyToComplete,
 } from "../../../src/features/rounds/selectors";
 import { calculateNetScore, calculatePlayingHandicap, getHandicapStrokesForHole } from "../../../src/utils/handicap";
+import { calculateRelativeMatchPlayHandicaps, getMatchPlayStrokesForHole } from "../../../src/utils/matchPlay";
 import { formatCurrency } from "../../../src/utils/currency";
 import { colors, fontSize, spacing } from "../../../src/constants/theme";
+import type { Round } from "../../../src/types";
 
 const ROW_HEIGHT = 44;
 
@@ -41,7 +48,10 @@ export default function RoundReviewScreen() {
 
   const ready = isRoundReadyToComplete(round);
   const unresolvedCarryoverCents = getUnresolvedCarryoverCents(round);
+  const awaitingPlayoff = isAwaitingPlayoff(round);
   const balances = [...getPlayerBalances(round)].sort((a, b) => b.balanceCents - a.balanceCents);
+  const isMatchPlay = round.format === "match_play";
+  const sides = isMatchPlay ? getRoundMatchPlaySides(round) : null;
 
   const editHole = (holeNumber: number) => {
     router.push(`/round/${round.id}?hole=${holeNumber}`);
@@ -57,11 +67,22 @@ export default function RoundReviewScreen() {
       <AppHeader title="Review Round" subtitle={round.courseName} onBack={() => router.back()} />
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {!ready ? (
+        {!ready && !awaitingPlayoff ? (
           <Card style={StyleSheet.flatten([styles.card, styles.warningCard])}>
             <Ionicons name="alert-circle" size={20} color={colors.warning} />
             <Text style={styles.warningText}>
-              Some holes are missing scores. Complete every hole before finishing the round.
+              {isMatchPlay
+                ? "This match isn't decided yet. Keep entering scores until it's won, halved, or a playoff is resolved."
+                : "Some holes are missing scores. Complete every hole before finishing the round."}
+            </Text>
+          </Card>
+        ) : null}
+
+        {awaitingPlayoff ? (
+          <Card style={StyleSheet.flatten([styles.card, styles.warningCard])}>
+            <Ionicons name="flash" size={20} color={colors.warning} />
+            <Text style={styles.warningText}>
+              Regulation ended all square — resume the round to play the sudden-death playoff.
             </Text>
           </Card>
         ) : null}
@@ -75,6 +96,8 @@ export default function RoundReviewScreen() {
             </Text>
           </Card>
         ) : null}
+
+        {isMatchPlay && sides ? <MatchPlaySummarySection round={round} sides={sides} /> : null}
 
         <Card style={styles.card}>
           <View style={styles.tableHeader}>
@@ -118,49 +141,25 @@ export default function RoundReviewScreen() {
                   ))}
                 </View>
 
-                {round.players.map((player) => {
-                  const playingHandicap = calculatePlayingHandicap(player.handicap, round.holeCount);
-                  return (
-                    <View key={player.id} style={styles.scoreRow}>
-                      {round.holes.slice(0, round.holeCount).map((hole) => {
-                        const record = round.scores.find(
-                          (s) => s.playerId === player.id && s.holeNumber === hole.number
-                        );
-                        const gross = record?.grossScore ?? null;
-                        const strokes = getHandicapStrokesForHole(playingHandicap, hole.strokeIndex, round.holeCount);
-                        const displayValue = scoreView === "net" ? calculateNetScore(gross, strokes) : gross;
-
-                        return (
-                          <Pressable
-                            key={hole.number}
-                            onPress={() => editHole(hole.number)}
-                            style={[styles.cell, { height: ROW_HEIGHT }]}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${player.name}, hole ${hole.number}, score ${displayValue ?? "not entered"}`}
-                          >
-                            <Text style={styles.scoreCellText}>{displayValue ?? "–"}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  );
-                })}
+                <ScorecardRows round={round} scoreView={scoreView} onEditHole={editHole} />
               </View>
             </ScrollView>
           </View>
         </Card>
 
         <Card style={styles.card}>
-          <Text style={styles.sectionTitle}>Skins &amp; balances</Text>
+          <Text style={styles.sectionTitle}>{isMatchPlay ? "Balances" : "Skins & balances"}</Text>
           {balances.map((b) => {
             const player = round.players.find((p) => p.id === b.playerId);
             return (
               <View key={b.playerId} style={styles.balanceRow}>
                 <View>
                   <Text style={styles.balanceName}>{player?.name}</Text>
-                  <Text style={styles.balanceSkins}>
-                    {b.skinsWon} skin{b.skinsWon === 1 ? "" : "s"} won
-                  </Text>
+                  {!isMatchPlay ? (
+                    <Text style={styles.balanceSkins}>
+                      {b.skinsWon ?? 0} skin{(b.skinsWon ?? 0) === 1 ? "" : "s"} won
+                    </Text>
+                  ) : null}
                 </View>
                 <MoneyAmount cents={b.balanceCents} currency={round.currency} size="md" />
               </View>
@@ -173,10 +172,113 @@ export default function RoundReviewScreen() {
           onPress={handleComplete}
           disabled={!ready}
           style={styles.completeButton}
-          accessibilityHint={ready ? undefined : "Finish entering every hole's scores first"}
+          accessibilityHint={ready ? undefined : "Finish deciding the round first"}
         />
       </ScrollView>
     </View>
+  );
+}
+
+function MatchPlaySummarySection({
+  round,
+  sides,
+}: {
+  round: Round;
+  sides: NonNullable<ReturnType<typeof getRoundMatchPlaySides>>;
+}) {
+  const result = round.matchPlayResult;
+  const stakeCents = round.matchPlayConfig?.stakeCents ?? 0;
+
+  return (
+    <Card style={styles.card}>
+      <Text style={styles.sectionTitle}>Match progression</Text>
+      <Text style={styles.stakeText}>Stake: {formatCurrency(stakeCents, round.currency)}{round.matchPlayConfig?.structure === "nassau" ? " per match" : ""}</Text>
+
+      {result?.structure === "nassau" ? (
+        <View style={styles.nassauWrapper}>
+          {(result.nassauMatches ?? []).map((match) => (
+            <NassauStatusCard
+              key={match.segment}
+              title={match.segment === "front" ? "Front Nine" : match.segment === "back" ? "Back Nine" : "Overall"}
+              statusText={match.status === 0 ? "All Square" : ""}
+              resultLabel={match.resultLabel}
+              winnerName={match.winnerSideId ? getMatchPlaySideName(round, match.winnerSideId) : null}
+              stakeCents={stakeCents}
+              currency={round.currency}
+            />
+          ))}
+        </View>
+      ) : result?.singleMatch ? (
+        <View style={styles.matchResultWrapper}>
+          <MatchResultCard
+            winnerName={result.singleMatch.winnerSideId ? getMatchPlaySideName(round, result.singleMatch.winnerSideId) : null}
+            loserName={
+              result.singleMatch.winnerSideId
+                ? getMatchPlaySideName(
+                    round,
+                    result.singleMatch.winnerSideId === sides.sideA.id ? sides.sideB.id : sides.sideA.id
+                  )
+                : null
+            }
+            resultLabel={result.singleMatch.resultLabel}
+            isHalved={result.singleMatch.isHalved}
+          />
+          {result.playoffResults && result.playoffResults.length > 0 ? (
+            <Text style={styles.playoffNote}>
+              Decided in a sudden-death playoff ({result.playoffResults.length} hole
+              {result.playoffResults.length > 1 ? "s" : ""}).
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+function ScorecardRows({
+  round,
+  scoreView,
+  onEditHole,
+}: {
+  round: Round;
+  scoreView: "gross" | "net";
+  onEditHole: (holeNumber: number) => void;
+}) {
+  const isMatchPlay = round.format === "match_play";
+  const relativeHandicaps = isMatchPlay && round.matchPlayConfig
+    ? calculateRelativeMatchPlayHandicaps(round.players, round.holeCount, round.matchPlayConfig.handicapAllowancePercent)
+    : {};
+
+  return (
+    <>
+      {round.players.map((player) => {
+        const playingHandicap = calculatePlayingHandicap(player.handicap, round.holeCount);
+        return (
+          <View key={player.id} style={styles.scoreRow}>
+            {round.holes.slice(0, round.holeCount).map((hole) => {
+              const record = round.scores.find((s) => s.playerId === player.id && s.holeNumber === hole.number);
+              const gross = record?.grossScore ?? null;
+              const strokes = isMatchPlay
+                ? getMatchPlayStrokesForHole(relativeHandicaps[player.id] ?? 0, hole.strokeIndex, round.holeCount)
+                : getHandicapStrokesForHole(playingHandicap, hole.strokeIndex, round.holeCount);
+              const displayValue = scoreView === "net" ? calculateNetScore(gross, strokes) : gross;
+
+              return (
+                <Pressable
+                  key={hole.number}
+                  onPress={() => onEditHole(hole.number)}
+                  style={[styles.cell, { height: ROW_HEIGHT }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${player.name}, hole ${hole.number}, score ${displayValue ?? "not entered"}`}
+                >
+                  <Text style={styles.scoreCellText}>{displayValue ?? "–"}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        );
+      })}
+    </>
   );
 }
 
@@ -209,6 +311,24 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: "700",
     color: colors.text,
+  },
+  stakeText: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 4,
+    marginBottom: spacing.sm,
+  },
+  nassauWrapper: {
+    marginTop: spacing.xs,
+  },
+  matchResultWrapper: {
+    marginTop: spacing.xs,
+  },
+  playoffNote: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: spacing.sm,
   },
   tableHeader: {
     flexDirection: "row",

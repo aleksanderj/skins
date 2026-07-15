@@ -1,4 +1,12 @@
-import type { PlayerBalance, Settlement } from "../types";
+import type { Settlement } from "../types";
+
+/**
+ * Minimal shape the settlement engine needs — deliberately narrower than
+ * `PlayerBalance` so it works for both Skins (which adds `skinsWon`) and
+ * Match Play (which has no per-skin concept at all) without either format
+ * leaking into this shared engine.
+ */
+export type Balance = { playerId: string; balanceCents: number };
 
 /**
  * Greedy debt-simplification: repeatedly match the largest debtor with the
@@ -7,7 +15,7 @@ import type { PlayerBalance, Settlement } from "../types";
  * simple, deterministic near-minimal result that's easy for players to
  * follow and verify.
  */
-export function calculateSettlements(balances: PlayerBalance[]): Settlement[] {
+export function calculateSettlements(balances: Balance[]): Settlement[] {
   const debtors = balances
     .filter((b) => b.balanceCents < 0)
     .map((b) => ({ playerId: b.playerId, remainingCents: -b.balanceCents }))

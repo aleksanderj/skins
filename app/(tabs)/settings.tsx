@@ -8,6 +8,7 @@ import { SegmentedControl } from "../../src/components/SegmentedControl";
 import { SecondaryButton } from "../../src/components/SecondaryButton";
 import { ConfirmationModal } from "../../src/components/ConfirmationModal";
 import { StakeSelector } from "../../src/features/rounds/StakeSelector";
+import { MatchPlaySettingsSection } from "../../src/features/rounds/MatchPlaySettingsSection";
 import { CURRENCIES } from "../../src/constants/golf";
 import { colors, fontSize, radius, spacing, touchTarget } from "../../src/constants/theme";
 import type { CurrencyCode } from "../../src/types";
@@ -23,42 +24,68 @@ export default function SettingsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <AppHeader title="Settings" />
       <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={styles.groupTitle}>Skins Defaults</Text>
         <Card style={styles.card}>
           <Text style={styles.label}>Default scoring</Text>
           <SegmentedControl
-            value={settings.defaultScoringMode}
-            onChange={(mode) => updateSettings({ defaultScoringMode: mode })}
+            value={settings.skinsDefaults.scoringMode}
+            onChange={(mode) => updateSettings({ skinsDefaults: { ...settings.skinsDefaults, scoringMode: mode } })}
             options={[
               { value: "gross", label: "Gross" },
               { value: "net", label: "Net" },
             ]}
           />
-        </Card>
 
-        <Card style={styles.card}>
           <Text style={styles.label}>Default stake per skin</Text>
           <StakeSelector
-            valueCents={settings.defaultStakePerSkinCents}
+            valueCents={settings.skinsDefaults.stakePerSkinCents}
             currency={settings.currency}
-            onChange={(cents) => updateSettings({ defaultStakePerSkinCents: cents })}
+            onChange={(cents) => updateSettings({ skinsDefaults: { ...settings.skinsDefaults, stakePerSkinCents: cents } })}
           />
-        </Card>
 
-        <Card style={styles.card}>
           <View style={styles.switchRow}>
             <View style={styles.flexShrink}>
               <Text style={styles.label}>Carryovers</Text>
               <Text style={styles.hint}>Tied holes roll their skin into the next hole by default.</Text>
             </View>
             <Switch
-              value={settings.defaultCarryoversEnabled}
-              onValueChange={(value) => updateSettings({ defaultCarryoversEnabled: value })}
+              value={settings.skinsDefaults.carryoversEnabled}
+              onValueChange={(value) =>
+                updateSettings({ skinsDefaults: { ...settings.skinsDefaults, carryoversEnabled: value } })
+              }
               trackColor={{ false: colors.border, true: colors.accent }}
               accessibilityLabel="Default carryovers enabled"
             />
           </View>
         </Card>
 
+        <Text style={styles.groupTitle}>Match Play Defaults</Text>
+        <Card style={styles.card}>
+          <MatchPlaySettingsSection
+            mode={settings.matchPlayDefaults.mode}
+            onModeChange={(mode) => updateSettings({ matchPlayDefaults: { ...settings.matchPlayDefaults, mode } })}
+            scoringMode={settings.matchPlayDefaults.scoringMode}
+            onScoringModeChange={(scoringMode) =>
+              updateSettings({ matchPlayDefaults: { ...settings.matchPlayDefaults, scoringMode } })
+            }
+            handicapAllowancePercent={settings.matchPlayDefaults.handicapAllowancePercent}
+            onHandicapAllowanceChange={(handicapAllowancePercent) =>
+              updateSettings({ matchPlayDefaults: { ...settings.matchPlayDefaults, handicapAllowancePercent } })
+            }
+            structure={settings.matchPlayDefaults.structure}
+            onStructureChange={(structure) =>
+              updateSettings({ matchPlayDefaults: { ...settings.matchPlayDefaults, structure } })
+            }
+            holeCount={18}
+            stakeCents={settings.matchPlayDefaults.stakeCents}
+            onStakeChange={(stakeCents) => updateSettings({ matchPlayDefaults: { ...settings.matchPlayDefaults, stakeCents } })}
+            tieRule={settings.matchPlayDefaults.tieRule}
+            onTieRuleChange={(tieRule) => updateSettings({ matchPlayDefaults: { ...settings.matchPlayDefaults, tieRule } })}
+            currency={settings.currency}
+          />
+        </Card>
+
+        <Text style={styles.groupTitle}>General</Text>
         <Card style={styles.card}>
           <Text style={styles.label}>Currency</Text>
           <View style={styles.currencyList}>
@@ -77,14 +104,14 @@ export default function SettingsScreen() {
         <Card style={styles.card}>
           <Text style={styles.label}>About</Text>
           <Text style={styles.hint}>
-            Skins is the fastest way for a group of golfers to run a Skins game — set stakes, enter
+            Skins is the fastest way for a group of golfers to run a Skins or Match Play game — set stakes, enter
             scores, and see live balances without doing the math by hand.
           </Text>
         </Card>
 
         <Card style={styles.card}>
           <Text style={styles.disclaimer}>
-            Skins tracks friendly bets and calculates settlements. Payments are handled outside the app.
+            The app tracks friendly bets and calculates settlements. Payments are handled outside the app.
           </Text>
         </Card>
 
@@ -146,6 +173,15 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
   },
+  groupTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: "800",
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
   card: {
     marginBottom: spacing.md,
   },
@@ -164,6 +200,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: spacing.md,
   },
   flexShrink: {
     flexShrink: 1,

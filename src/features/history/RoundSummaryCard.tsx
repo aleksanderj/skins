@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Card } from "../../components/Card";
 import { MoneyAmount } from "../../components/MoneyAmount";
 import { colors, fontSize, spacing, touchTarget } from "../../constants/theme";
-import { getRoundWinnerSummary } from "../rounds/selectors";
+import { getMatchPlayResultSummary, getRoundWinnerSummary } from "../rounds/selectors";
 import type { Round } from "../../types";
 
 type Props = {
@@ -12,13 +12,13 @@ type Props = {
 };
 
 export function RoundSummaryCard({ round, onPress }: Props) {
-  const winner = getRoundWinnerSummary(round);
   const date = round.completedAt ?? round.createdAt;
   const formattedDate = new Date(date).toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
+  const isMatchPlay = round.format === "match_play";
 
   return (
     <Pressable
@@ -29,32 +29,53 @@ export function RoundSummaryCard({ round, onPress }: Props) {
     >
       <Card>
         <View style={styles.headerRow}>
-          <Text style={styles.course} numberOfLines={1}>
-            {round.courseName}
-          </Text>
+          <View style={styles.headerLeft}>
+            <View style={[styles.badge, isMatchPlay && styles.badgeMatchPlay]}>
+              <Text style={[styles.badgeText, isMatchPlay && styles.badgeTextMatchPlay]}>
+                {isMatchPlay ? "MATCH PLAY" : "SKINS"}
+              </Text>
+            </View>
+            <Text style={styles.course} numberOfLines={1}>
+              {round.courseName}
+            </Text>
+          </View>
           <Text style={styles.date}>{formattedDate}</Text>
         </View>
 
         <View style={styles.metaRow}>
           <Text style={styles.meta}>
-            {round.players.length} players · {round.scoringMode === "net" ? "Net" : "Gross"} Skins ·{" "}
-            {round.holeCount} holes
+            {round.players.length} players ·{" "}
+            {isMatchPlay ? (round.matchPlayConfig?.scoringMode === "net" ? "Net" : "Gross") : round.skinsConfig?.scoringMode === "net" ? "Net" : "Gross"}{" "}
+            {isMatchPlay ? "Match Play" : "Skins"} · {round.holeCount} holes
           </Text>
         </View>
 
-        <View style={styles.footerRow}>
-          <View>
-            <Text style={styles.winnerLabel}>{winner.name ? "Winner" : "No skins won"}</Text>
-            {winner.name ? (
-              <Text style={styles.winnerName}>{winner.name}</Text>
-            ) : (
-              <Text style={styles.winnerName}>All square</Text>
-            )}
-          </View>
-          <MoneyAmount cents={winner.balanceCents} currency={round.currency} size="lg" />
-        </View>
+        {isMatchPlay ? <MatchPlayFooter round={round} /> : <SkinsFooter round={round} />}
       </Card>
     </Pressable>
+  );
+}
+
+function SkinsFooter({ round }: { round: Round }) {
+  const winner = getRoundWinnerSummary(round);
+  return (
+    <View style={styles.footerRow}>
+      <View>
+        <Text style={styles.winnerLabel}>{winner.name ? "Winner" : "No skins won"}</Text>
+        <Text style={styles.winnerName}>{winner.name ?? "All square"}</Text>
+      </View>
+      <MoneyAmount cents={winner.balanceCents} currency={round.currency} size="lg" />
+    </View>
+  );
+}
+
+function MatchPlayFooter({ round }: { round: Round }) {
+  const summary = getMatchPlayResultSummary(round);
+  return (
+    <View style={styles.footerRowStacked}>
+      <Text style={styles.winnerName}>{summary.title}</Text>
+      {summary.subtitle ? <Text style={styles.matchSubtitle}>{summary.subtitle}</Text> : null}
+    </View>
   );
 }
 
@@ -70,12 +91,34 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
+  headerLeft: {
+    flexShrink: 1,
+    marginRight: spacing.sm,
+  },
+  badge: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.light,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: 999,
+    marginBottom: 4,
+  },
+  badgeMatchPlay: {
+    backgroundColor: "#FCF3E1",
+  },
+  badgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+    color: colors.primaryDark,
+  },
+  badgeTextMatchPlay: {
+    color: colors.warning,
+  },
   course: {
     fontSize: fontSize.md,
     fontWeight: "700",
     color: colors.text,
-    flexShrink: 1,
-    marginRight: spacing.sm,
   },
   date: {
     fontSize: fontSize.xs,
@@ -94,6 +137,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     marginTop: spacing.md,
   },
+  footerRowStacked: {
+    marginTop: spacing.md,
+  },
   winnerLabel: {
     fontSize: fontSize.xs,
     color: colors.textSecondary,
@@ -102,6 +148,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: "700",
     color: colors.text,
+    marginTop: 2,
+  },
+  matchSubtitle: {
+    fontSize: fontSize.sm,
+    fontWeight: "700",
+    color: colors.primaryDark,
     marginTop: 2,
   },
 });

@@ -1,9 +1,18 @@
 import type { PlayerBalance, Round } from "../../types";
 import { calculatePlayerBalances } from "../../utils/balances";
 import { calculateSettlements } from "../../utils/settlements";
+import { getMatchPlaySides } from "../../utils/matchPlay";
 
 export function getPlayerBalances(round: Round): PlayerBalance[] {
-  return calculatePlayerBalances(round.players, round.skinResults, round.stakePerSkinCents);
+  if (round.format === "match_play") {
+    const balancesCents = round.matchPlayResult?.playerBalancesCents ?? {};
+    return round.players.map((p) => ({ playerId: p.id, balanceCents: balancesCents[p.id] ?? 0 }));
+  }
+
+  const skinsConfig = round.skinsConfig;
+  const skinResults = round.skinsResult?.skinResults ?? [];
+  if (!skinsConfig) return round.players.map((p) => ({ playerId: p.id, balanceCents: 0 }));
+  return calculatePlayerBalances(round.players, skinResults, skinsConfig.stakePerSkinCents);
 }
 
 export function getSettlements(round: Round) {
@@ -37,12 +46,41 @@ export function getCompletedHoleCount(round: Round): number {
   return count;
 }
 
+/** True once the match/segments are mathematically decided (win, or an accepted halve). */
+export function isMatchPlayDecided(round: Round): boolean {
+  if (round.format !== "match_play" || !round.matchPlayResult) return false;
+  const result = round.matchPlayResult;
+
+  if (result.structure === "nassau") {
+    return (result.nassauMatches ?? []).length > 0 && (result.nassauMatches ?? []).every((m) => m.completed);
+  }
+
+  const single = result.singleMatch;
+  if (!single) return false;
+  const tieRule = round.matchPlayConfig?.tieRule;
+  return single.winnerSideId !== null || (single.isHalved && tieRule === "halve");
+}
+
+/** True once regulation is halved and the configured tie rule is a playoff, but no playoff score exists yet. */
+export function isAwaitingPlayoff(round: Round): boolean {
+  if (round.format !== "match_play" || round.matchPlayConfig?.structure !== "single_match") return false;
+  if (round.matchPlayConfig?.tieRule !== "playoff") return false;
+  const single = round.matchPlayResult?.singleMatch;
+  if (!single) return false;
+  return single.isHalved && single.winnerSideId === null;
+}
+
 export function isRoundReadyToComplete(round: Round): boolean {
+  if (round.format === "match_play") {
+    return isMatchPlayDecided(round);
+  }
   return getCompletedHoleCount(round) === round.holeCount;
 }
 
 export function getUnresolvedCarryoverCents(round: Round): number {
-  const last = round.skinResults[round.skinResults.length - 1];
+  if (round.format !== "skins") return 0;
+  const results = round.skinsResult?.skinResults ?? [];
+  const last = results[results.length - 1];
   if (!last) return 0;
   if (last.holeNumber !== round.holeCount) return 0;
   return last.carriedIntoNextHoleCents;
@@ -50,6 +88,16 @@ export function getUnresolvedCarryoverCents(round: Round): number {
 
 export function getPlayerName(round: Round, playerId: string): string {
   return round.players.find((p) => p.id === playerId)?.name ?? "Unknown player";
+}
+
+/** Resolves a Match Play side id to a display name — a player's own name for Individual, a team name for Team. */
+export function getMatchPlaySideName(round: Round, sideId: string): string {
+  if (round.format !== "match_play" || !round.matchPlayConfig) return "Unknown";
+  if (round.matchPlayConfig.mode === "individual") {
+    return getPlayerName(round, sideId);
+  }
+  const team = round.matchPlayConfig.teams?.find((t) => t.id === sideId);
+  return team?.name ?? "Unknown team";
 }
 
 export function getHoleScore(round: Round, playerId: string, holeNumber: number): number | null {
@@ -63,5 +111,81 @@ export function getRoundWinnerSummary(
 ): { name: string; balanceCents: number } | { name: null; balanceCents: 0 } {
   const leader = getLeader(round);
   if (!leader) return { name: null, balanceCents: 0 };
-  return { name: getPlayerName(round, leader.playerId), balanceCents: leader.balanceCents };
+  const name = round.format === "match_play" ? getMatchPlaySideName(round, leader.playerId) : getPlayerName(round, leader.playerId);
+  return { name, balanceCents: leader.balanceCents };
+}
+
+/** The two competing sides for a Match Play round, or null if config/players are incomplete. */
+export function getRoundMatchPlaySides(round: Round) {
+  if (round.format !== "match_play" || !round.matchPlayConfig) return null;
+  return getMatchPlaySides(round.players, round.matchPlayConfig);
+}
+
+/** Short headline used on Home/History cards and the active-match header, e.g. "Alex 2 Up" or "All Square". */
+export function getMatchPlayStatusHeadline(round: Round): string {
+  if (round.format !== "match_play" || !round.matchPlayResult) return "";
+  const sides = getRoundMatchPlaySides(round);
+  if (!sides) return "";
+
+  const result = round.matchPlayResult;
+  const single = result.structure === "single_match" ? result.singleMatch : undefined;
+  if (!single) {
+    // Nassau: headline off the Overall segment.
+    const overall = result.nassauMatches?.find((m) => m.segment === "overall");
+    if (!overall) return "All Square";
+    return formatStatusLabel(overall.status, sides.sideA.name, sides.sideB.name);
+  }
+
+  const lastHole = single.holeResults[single.holeResults.length - 1];
+  if (!lastHole) return "All Square";
+  if (single.winnerSideId) {
+    return `${getMatchPlaySideName(round, single.winnerSideId)} wins ${single.resultLabel}`;
+  }
+  if (single.isHalved) return "Match Halved";
+  return formatStatusLabel(lastHole.statusAfterHole, sides.sideA.name, sides.sideB.name);
+}
+
+function formatStatusLabel(status: number, sideAName: string, sideBName: string): string {
+  if (status === 0) return "All Square";
+  const leaderName = status > 0 ? sideAName : sideBName;
+  return `${leaderName} ${Math.abs(status)} Up`;
+}
+
+/** Result summary for Home/History cards: {"Alex defeats Ben", "3 & 2"} or {"Nassau", "Won 2 of 3 matches"}. */
+export function getMatchPlayResultSummary(round: Round): { title: string; subtitle: string } {
+  if (round.format !== "match_play" || !round.matchPlayResult) return { title: "", subtitle: "" };
+  const sides = getRoundMatchPlaySides(round);
+  if (!sides) return { title: "", subtitle: "" };
+  const result = round.matchPlayResult;
+
+  if (result.structure === "nassau") {
+    const matches = result.nassauMatches ?? [];
+    const sideAWins = matches.filter((m) => m.winnerSideId === sides.sideA.id).length;
+    const sideBWins = matches.filter((m) => m.winnerSideId === sides.sideB.id).length;
+    const decided = matches.filter((m) => m.completed).length;
+
+    if (sideAWins === 0 && sideBWins === 0) {
+      return {
+        title: "Nassau",
+        subtitle: decided === matches.length ? "All matches halved" : `${decided} of ${matches.length} matches decided`,
+      };
+    }
+    const leader = sideAWins > sideBWins ? sides.sideA.name : sideBWins > sideAWins ? sides.sideB.name : null;
+    return {
+      title: "Nassau",
+      subtitle: leader
+        ? `${leader} won ${Math.max(sideAWins, sideBWins)} of ${matches.length} matches`
+        : `Split ${sideAWins}-${sideBWins}`,
+    };
+  }
+
+  const single = result.singleMatch;
+  if (!single) return { title: "", subtitle: "" };
+  if (single.isHalved) return { title: "Match Halved", subtitle: "" };
+  if (!single.winnerSideId) return { title: "In progress", subtitle: "" };
+
+  const winnerName = getMatchPlaySideName(round, single.winnerSideId);
+  const loserId = single.winnerSideId === single.sideAId ? single.sideBId : single.sideAId;
+  const loserName = getMatchPlaySideName(round, loserId);
+  return { title: `${winnerName} defeats ${loserName}`, subtitle: single.resultLabel };
 }

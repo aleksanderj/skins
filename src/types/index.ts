@@ -1,5 +1,5 @@
 /**
- * Core data models for Skins.
+ * Core data models for Skins and Match Play.
  *
  * Deviation from a plain spec: every monetary field is suffixed `Cents` and
  * stored as an integer number of cents. This is required by the "never rely
@@ -26,6 +26,21 @@ export type PlayerHoleScore = {
   grossScore: number | null;
 };
 
+export type ScoringMode = "gross" | "net";
+export type RoundStatus = "setup" | "active" | "completed";
+export type CurrencyCode = "USD" | "EUR" | "GBP" | "NOK";
+export type GameFormat = "skins" | "match_play";
+
+// ---------------------------------------------------------------------------
+// Skins
+// ---------------------------------------------------------------------------
+
+export type SkinsConfig = {
+  scoringMode: ScoringMode;
+  stakePerSkinCents: number;
+  carryoversEnabled: boolean;
+};
+
 export type SkinResult = {
   holeNumber: number;
   winnerPlayerId: string | null;
@@ -38,11 +53,99 @@ export type SkinResult = {
   carriedIntoNextHoleCents: number;
 };
 
-export type ScoringMode = "gross" | "net";
+export type SkinsRoundResult = {
+  skinResults: SkinResult[];
+};
 
-export type RoundStatus = "setup" | "active" | "completed";
+// ---------------------------------------------------------------------------
+// Match Play
+// ---------------------------------------------------------------------------
 
-export type CurrencyCode = "USD" | "EUR" | "GBP" | "NOK";
+export type MatchPlayMode = "individual" | "team";
+export type MatchPlayTieRule = "halve" | "playoff";
+export type MatchPlayStructure = "single_match" | "nassau";
+export type HandicapAllowancePercent = 100 | 90 | 85 | 75;
+export type NassauSegment = "front" | "back" | "overall";
+
+export type MatchPlayTeam = {
+  id: string;
+  name: string;
+  playerIds: string[];
+};
+
+/**
+ * A competing side in a match. For individual mode a side wraps exactly one
+ * player; for team mode it wraps a configured MatchPlayTeam. Normalizing
+ * both into the same shape lets all hole/status/result math be written once
+ * and reused for both modes instead of branching mode-by-mode everywhere.
+ */
+export type MatchPlaySide = {
+  id: string;
+  name: string;
+  playerIds: string[];
+};
+
+export type MatchPlayConfig = {
+  mode: MatchPlayMode;
+  scoringMode: ScoringMode;
+  handicapAllowancePercent: HandicapAllowancePercent;
+  stakeCents: number;
+  tieRule: MatchPlayTieRule;
+  structure: MatchPlayStructure;
+  teams?: MatchPlayTeam[];
+};
+
+export type MatchPlayHoleResult = {
+  holeNumber: number;
+  sideAScore: number | null;
+  sideBScore: number | null;
+  winnerSideId: string | null;
+  /** Positive: side A up. Negative: side B up. Zero: All Square. */
+  statusAfterHole: number;
+  holesRemaining: number;
+  isDormie: boolean;
+  isMatchComplete: boolean;
+};
+
+export type MatchPlayMatchResult = {
+  sideAId: string;
+  sideBId: string;
+  holeResults: MatchPlayHoleResult[];
+  winnerSideId: string | null;
+  completionHole: number | null;
+  finalStatus: number;
+  resultLabel: string;
+  isHalved: boolean;
+};
+
+export type MatchPlayPlayoffResult = {
+  playoffHoleNumber: number;
+  sourceHoleNumber: number;
+  winnerSideId: string | null;
+};
+
+export type NassauMatchResult = {
+  segment: NassauSegment;
+  startHole: number;
+  endHole: number;
+  status: number;
+  completed: boolean;
+  winnerSideId: string | null;
+  resultLabel: string | null;
+  holeResults: MatchPlayHoleResult[];
+};
+
+export type MatchPlayRoundResult = {
+  structure: MatchPlayStructure;
+  singleMatch?: MatchPlayMatchResult;
+  nassauMatches?: NassauMatchResult[];
+  playoffResults?: MatchPlayPlayoffResult[];
+  playerBalancesCents: Record<string, number>;
+};
+
+// ---------------------------------------------------------------------------
+// Round
+// ---------------------------------------------------------------------------
 
 export type Round = {
   id: string;
@@ -53,20 +156,33 @@ export type Round = {
   holeCount: 9 | 18;
   currentHole: number;
   status: RoundStatus;
-  scoringMode: ScoringMode;
-  stakePerSkinCents: number;
-  carryoversEnabled: boolean;
+  format: GameFormat;
   currency: CurrencyCode;
   players: Player[];
   holes: Hole[];
   scores: PlayerHoleScore[];
+
+  // Skins-only. Present when format === "skins".
+  skinsConfig?: SkinsConfig;
+  /** Derived cache, always recomputed from `scores` — see recalculateRound. */
+  skinsResult?: SkinsRoundResult;
+
+  // Match Play-only. Present when format === "match_play".
+  matchPlayConfig?: MatchPlayConfig;
+  /** Derived cache, always recomputed from `scores` / `matchPlayPlayoffScores`. */
+  matchPlayResult?: MatchPlayRoundResult;
   /**
-   * Derived cache of skin results, recalculated any time a score changes.
-   * Kept on the round so completed rounds retain their results without
-   * needing to be recomputed from scratch in history.
+   * Sudden-death playoff scores, kept separate from regulation `scores` per
+   * the product spec. Indexed by a playoff-local `holeNumber` (1, 2, 3, ...)
+   * that maps back to a reused course hole via `sourceHoleNumber`, not by
+   * the round's real hole numbers.
    */
-  skinResults: SkinResult[];
+  matchPlayPlayoffScores?: PlayerHoleScore[];
 };
+
+// ---------------------------------------------------------------------------
+// Settlement (shared engine, format-agnostic)
+// ---------------------------------------------------------------------------
 
 export type Settlement = {
   fromPlayerId: string;
@@ -77,12 +193,31 @@ export type Settlement = {
 export type PlayerBalance = {
   playerId: string;
   balanceCents: number;
-  skinsWon: number;
+  /** Skins-only display detail; absent for Match Play balances. */
+  skinsWon?: number;
+};
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+export type SkinsDefaults = {
+  scoringMode: ScoringMode;
+  stakePerSkinCents: number;
+  carryoversEnabled: boolean;
+};
+
+export type MatchPlayDefaults = {
+  mode: MatchPlayMode;
+  scoringMode: ScoringMode;
+  handicapAllowancePercent: HandicapAllowancePercent;
+  structure: MatchPlayStructure;
+  stakeCents: number;
+  tieRule: MatchPlayTieRule;
 };
 
 export type AppSettings = {
-  defaultScoringMode: ScoringMode;
-  defaultStakePerSkinCents: number;
-  defaultCarryoversEnabled: boolean;
+  skinsDefaults: SkinsDefaults;
+  matchPlayDefaults: MatchPlayDefaults;
   currency: CurrencyCode;
 };

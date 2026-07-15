@@ -7,8 +7,16 @@ import { AppHeader } from "../../../src/components/AppHeader";
 import { Card } from "../../../src/components/Card";
 import { LeaderboardRow } from "../../../src/components/LeaderboardRow";
 import { SettlementCard } from "../../../src/components/SettlementCard";
+import { MatchResultCard } from "../../../src/components/MatchResultCard";
+import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
 import { EmptyState } from "../../../src/components/EmptyState";
-import { getPlayerBalances, getPlayerName, getSettlements } from "../../../src/features/rounds/selectors";
+import {
+  getMatchPlaySideName,
+  getPlayerBalances,
+  getPlayerName,
+  getRoundMatchPlaySides,
+  getSettlements,
+} from "../../../src/features/rounds/selectors";
 import { colors, fontSize, spacing } from "../../../src/constants/theme";
 import { formatCurrency } from "../../../src/utils/currency";
 
@@ -33,15 +41,55 @@ export default function HistoryRoundDetailScreen() {
     day: "numeric",
     year: "numeric",
   });
+  const isMatchPlay = round.format === "match_play";
+  const sides = isMatchPlay ? getRoundMatchPlaySides(round) : null;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <AppHeader title={round.courseName} subtitle={date} onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.meta}>
-          {round.players.length} players · {round.scoringMode === "net" ? "Net" : "Gross"} Skins ·{" "}
-          {round.holeCount} holes · {formatCurrency(round.stakePerSkinCents, round.currency)}/skin
+          {round.players.length} players ·{" "}
+          {isMatchPlay
+            ? `${round.matchPlayConfig?.scoringMode === "net" ? "Net" : "Gross"} Match Play`
+            : `${round.skinsConfig?.scoringMode === "net" ? "Net" : "Gross"} Skins`}{" "}
+          · {round.holeCount} holes ·{" "}
+          {isMatchPlay
+            ? `${formatCurrency(round.matchPlayConfig?.stakeCents ?? 0, round.currency)}/match`
+            : `${formatCurrency(round.skinsConfig?.stakePerSkinCents ?? 0, round.currency)}/skin`}
         </Text>
+
+        {isMatchPlay && sides ? (
+          round.matchPlayResult?.structure === "nassau" ? (
+            <View style={styles.card}>
+              {(round.matchPlayResult.nassauMatches ?? []).map((match) => (
+                <NassauStatusCard
+                  key={match.segment}
+                  title={match.segment === "front" ? "Front Nine" : match.segment === "back" ? "Back Nine" : "Overall"}
+                  statusText=""
+                  resultLabel={match.resultLabel}
+                  winnerName={match.winnerSideId ? getMatchPlaySideName(round, match.winnerSideId) : null}
+                  stakeCents={round.matchPlayConfig?.stakeCents ?? 0}
+                  currency={round.currency}
+                />
+              ))}
+            </View>
+          ) : round.matchPlayResult?.singleMatch ? (
+            <MatchResultCard
+              winnerName={round.matchPlayResult.singleMatch.winnerSideId ? getMatchPlaySideName(round, round.matchPlayResult.singleMatch.winnerSideId) : null}
+              loserName={
+                round.matchPlayResult.singleMatch.winnerSideId
+                  ? getMatchPlaySideName(
+                      round,
+                      round.matchPlayResult.singleMatch.winnerSideId === sides.sideA.id ? sides.sideB.id : sides.sideA.id
+                    )
+                  : null
+              }
+              resultLabel={round.matchPlayResult.singleMatch.resultLabel}
+              isHalved={round.matchPlayResult.singleMatch.isHalved}
+            />
+          ) : null
+        ) : null}
 
         <Card style={styles.card}>
           <Text style={styles.sectionTitle}>Final balances</Text>
@@ -51,7 +99,7 @@ export default function HistoryRoundDetailScreen() {
               rank={index + 1}
               name={getPlayerName(round, b.playerId)}
               index={index}
-              skinsWon={b.skinsWon}
+              skinsWon={b.skinsWon ?? 0}
               balanceCents={b.balanceCents}
               currency={round.currency}
             />

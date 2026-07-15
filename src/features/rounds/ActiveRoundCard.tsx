@@ -4,7 +4,7 @@ import { Card } from "../../components/Card";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { HoleProgress } from "../../components/HoleProgress";
 import { colors, fontSize, spacing } from "../../constants/theme";
-import { getRoundWinnerSummary } from "./selectors";
+import { getMatchPlayStatusHeadline, getRoundWinnerSummary } from "./selectors";
 import type { Round } from "../../types";
 
 type Props = {
@@ -13,11 +13,15 @@ type Props = {
 };
 
 export function ActiveRoundCard({ round, onResume }: Props) {
+  const isMatchPlay = round.format === "match_play";
   const leader = getRoundWinnerSummary(round);
+  const statusText = isMatchPlay ? getMatchPlayStatusHeadline(round) : (leader.name ?? "No skins yet");
 
   return (
     <Card style={styles.card}>
-      <Text style={styles.eyebrow}>ROUND IN PROGRESS</Text>
+      <View style={styles.badgeRow}>
+        <Text style={styles.eyebrow}>{isMatchPlay ? "MATCH PLAY" : "SKINS"} IN PROGRESS</Text>
+      </View>
       <Text style={styles.course}>{round.courseName}</Text>
 
       <View style={styles.progressRow}>
@@ -30,9 +34,9 @@ export function ActiveRoundCard({ round, onResume }: Props) {
           <Text style={styles.statValue}>{round.players.length}</Text>
         </View>
         <View style={styles.stat}>
-          <Text style={styles.statLabel}>Leader</Text>
+          <Text style={styles.statLabel}>{isMatchPlay ? "Status" : "Leader"}</Text>
           <Text style={styles.statValue} numberOfLines={1}>
-            {leader.name ?? "No skins yet"}
+            {statusText || "All Square"}
           </Text>
         </View>
       </View>
@@ -45,6 +49,9 @@ export function ActiveRoundCard({ round, onResume }: Props) {
 const styles = StyleSheet.create({
   card: {
     marginBottom: spacing.lg,
+  },
+  badgeRow: {
+    flexDirection: "row",
   },
   eyebrow: {
     fontSize: fontSize.xs,
