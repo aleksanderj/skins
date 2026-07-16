@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppStore } from "../src/store/useAppStore";
 import { PrimaryButton } from "../src/components/PrimaryButton";
 import { GradientCourseBackground } from "../src/features/onboarding/GradientCourseBackground";
+import { ImageFadeOverlay } from "../src/features/onboarding/ImageFadeOverlay";
 import { ScoringPreviewCard } from "../src/features/onboarding/ScoringPreviewCard";
 import { StandingsPreviewCard } from "../src/features/onboarding/StandingsPreviewCard";
 import { SettlementPreviewCard } from "../src/features/onboarding/SettlementPreviewCard";
@@ -119,6 +120,7 @@ export default function OnboardingScreen() {
               ) : (
                 <GradientCourseBackground />
               )}
+              <ImageFadeOverlay />
             </View>
 
             <View style={styles.content}>
