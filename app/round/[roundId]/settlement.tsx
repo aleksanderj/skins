@@ -68,7 +68,7 @@ export default function SettlementScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
         <Text style={styles.headline}>Round Complete</Text>
         <Text style={styles.subheadline}>{round.courseName}</Text>
 

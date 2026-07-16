@@ -13,16 +13,15 @@ import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
 import { MatchProgressStrip, type MatchProgressEntry } from "../../../src/components/MatchProgressStrip";
 import { MoneyAmount } from "../../../src/components/MoneyAmount";
 import { EmptyState } from "../../../src/components/EmptyState";
+import { ScorecardGrid } from "../../../src/features/rounds/ScorecardGrid";
 import {
   getPlayerBalances,
   getPlayerName,
   getRoundMatchPlaySides,
 } from "../../../src/features/rounds/selectors";
-import { calculateNetScore, calculatePlayingHandicap, getHandicapStrokesForHole } from "../../../src/utils/handicap";
-import { calculateRelativeMatchPlayHandicaps, getMatchPlayStrokesForHole } from "../../../src/utils/matchPlay";
 import { formatCurrency } from "../../../src/utils/currency";
 import { colors, fontSize, spacing } from "../../../src/constants/theme";
-import type { MatchPlayHoleResult, Round } from "../../../src/types";
+import type { Round } from "../../../src/types";
 
 export default function LeaderboardScreen() {
   const insets = useSafeAreaInsets();
@@ -48,6 +47,7 @@ export default function LeaderboardScreen() {
 }
 
 function SkinsLeaderboard({ round }: { round: Round }) {
+  const insets = useSafeAreaInsets();
   const [view, setView] = useState<"balances" | "skins">("balances");
   const balances = [...getPlayerBalances(round)].sort((a, b) => b.balanceCents - a.balanceCents);
   const skinResults = round.skinsResult?.skinResults ?? [];
@@ -65,7 +65,7 @@ function SkinsLeaderboard({ round }: { round: Round }) {
         />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
         {view === "balances" ? (
           <Card>
             {balances.map((b, index) => (
@@ -114,6 +114,7 @@ function SkinsLeaderboard({ round }: { round: Round }) {
 }
 
 function MatchPlayLeaderboard({ round }: { round: Round }) {
+  const insets = useSafeAreaInsets();
   const [view, setView] = useState<"match" | "scorecard" | "balances">("match");
   const sides = getRoundMatchPlaySides(round);
   const config = round.matchPlayConfig;
@@ -142,7 +143,7 @@ function MatchPlayLeaderboard({ round }: { round: Round }) {
         />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
         {view === "match" ? (
           <MatchView round={round} />
         ) : view === "scorecard" ? (
@@ -234,37 +235,9 @@ function MatchView({ round }: { round: Round }) {
 }
 
 function ScorecardView({ round }: { round: Round }) {
-  const config = round.matchPlayConfig!;
-  const relativeHandicaps = calculateRelativeMatchPlayHandicaps(round.players, round.holeCount, config.handicapAllowancePercent);
-
   return (
-    <Card padded={false}>
-      {round.players.map((player) => {
-        const playingHandicap = calculatePlayingHandicap(player.handicap, round.holeCount);
-        return (
-          <View key={player.id} style={styles.scoreCardRow}>
-            <Text style={styles.scoreCardName}>{player.name}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.scoreCardHoles}>
-                {round.holes.slice(0, round.holeCount).map((hole) => {
-                  const record = round.scores.find((s) => s.playerId === player.id && s.holeNumber === hole.number);
-                  const gross = record?.grossScore ?? null;
-                  const strokes = getMatchPlayStrokesForHole(relativeHandicaps[player.id] ?? 0, hole.strokeIndex, round.holeCount);
-                  const net = calculateNetScore(gross, strokes);
-                  return (
-                    <View key={hole.number} style={styles.scoreCardCell}>
-                      <Text style={styles.scoreCardCellText}>{gross ?? "–"}</Text>
-                      {config.scoringMode === "net" && net !== null ? (
-                        <Text style={styles.scoreCardNetText}>{net}</Text>
-                      ) : null}
-                    </View>
-                  );
-                })}
-              </View>
-            </ScrollView>
-          </View>
-        );
-      })}
+    <Card>
+      <ScorecardGrid round={round} />
     </Card>
   );
 }
@@ -361,34 +334,5 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: "600",
     color: colors.text,
-  },
-  scoreCardRow: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  scoreCardName: {
-    fontSize: fontSize.sm,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  scoreCardHoles: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  scoreCardCell: {
-    width: 32,
-    alignItems: "center",
-  },
-  scoreCardCellText: {
-    fontSize: fontSize.sm,
-    fontWeight: "700",
-    color: colors.text,
-  },
-  scoreCardNetText: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
   },
 });

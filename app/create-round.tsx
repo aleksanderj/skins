@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import { useAppStore } from "../src/store/useAppStore";
 import { AppHeader } from "../src/components/AppHeader";
 import { Card } from "../src/components/Card";
+import { ConfirmationModal } from "../src/components/ConfirmationModal";
 import { PrimaryButton } from "../src/components/PrimaryButton";
 import { SecondaryButton } from "../src/components/SecondaryButton";
 import { SegmentedControl } from "../src/components/SegmentedControl";
@@ -53,6 +54,12 @@ export default function CreateRoundScreen() {
   const insets = useSafeAreaInsets();
   const settings = useAppStore((s) => s.settings);
   const createRound = useAppStore((s) => s.createRound);
+  const activeRound = useAppStore((s) => s.activeRound);
+  const abandonRound = useAppStore((s) => s.abandonRound);
+  // The "Start Game" action lives in the tab bar now, reachable from anywhere —
+  // so the one-active-round-at-a-time guard has to live here rather than
+  // behind the button that used to trigger this screen.
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(!!activeRound);
 
   const [format, setFormat] = useState<GameFormat>("skins");
   const [courseName, setCourseName] = useState("");
@@ -266,11 +273,24 @@ export default function CreateRoundScreen() {
   const minPlayersForFormat = format === "match_play" ? maxPlayersForFormat : MIN_PLAYERS;
   const playersLocked = format === "match_play";
 
+  const handleDiscardAndContinue = () => {
+    abandonRound();
+    setShowDiscardConfirm(false);
+  };
+
+  const handleKeepPlaying = () => {
+    setShowDiscardConfirm(false);
+    router.back();
+  };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <AppHeader title="New Round" onBack={() => router.back()} />
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}
+          keyboardShouldPersistTaps="handled"
+        >
           <Card style={styles.card}>
             <Text style={styles.sectionTitle}>Game format</Text>
             <GameFormatCard
@@ -465,6 +485,17 @@ export default function CreateRoundScreen() {
           <PrimaryButton label="Start Round" onPress={handleSubmit} style={styles.startButton} />
         </ScrollView>
       </View>
+
+      <ConfirmationModal
+        visible={showDiscardConfirm}
+        title="Discard active round?"
+        message="Starting a new round will discard your in-progress round. This can't be undone."
+        confirmLabel="Discard & Start New"
+        cancelLabel="Keep Playing"
+        destructive
+        onConfirm={handleDiscardAndContinue}
+        onCancel={handleKeepPlaying}
+      />
     </KeyboardAvoidingView>
   );
 }

@@ -23,7 +23,7 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <AppHeader title="Settings" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
         <Text style={styles.groupTitle}>Skins Defaults</Text>
         <Card style={styles.card}>
           <Text style={styles.label}>Default scoring</Text>

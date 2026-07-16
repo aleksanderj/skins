@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#F7F8F5",
+    "backgroundColor": "#F8F5EF",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.skins.golf"
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.skins.golf",
       "adaptiveIcon": {
-        "backgroundColor": "#123C2E",
+        "backgroundColor": "#0A3625",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -31,7 +31,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#123C2E",
+          "backgroundColor": "#0A3625",
           "image": "./assets/icon.png",
           "imageWidth": 120
         }

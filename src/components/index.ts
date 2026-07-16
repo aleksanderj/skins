@@ -4,7 +4,6 @@ export { Card } from "./Card";
 export { ConfirmationModal } from "./ConfirmationModal";
 export { EmptyState } from "./EmptyState";
 export { GameFormatCard } from "./GameFormatCard";
-export { HandicapStrokeBadge } from "./HandicapStrokeBadge";
 export { HoleProgress } from "./HoleProgress";
 export { LeaderboardRow } from "./LeaderboardRow";
 export { MatchProgressStrip } from "./MatchProgressStrip";

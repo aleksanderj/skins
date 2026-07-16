@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useAppStore } from "../../../src/store/useAppStore";
+import { useToastStore } from "../../../src/store/useToastStore";
 import { AppHeader } from "../../../src/components/AppHeader";
 import { PrimaryButton } from "../../../src/components/PrimaryButton";
 import { SecondaryButton } from "../../../src/components/SecondaryButton";
@@ -14,7 +15,6 @@ import { PlayerScoreRow } from "../../../src/components/PlayerScoreRow";
 import { MatchStatusCard } from "../../../src/components/MatchStatusCard";
 import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
 import { TeamBadge } from "../../../src/components/TeamBadge";
-import { HandicapStrokeBadge } from "../../../src/components/HandicapStrokeBadge";
 import { PlayoffBanner } from "../../../src/components/PlayoffBanner";
 import { ScoreStepper } from "../../../src/components/ScoreStepper";
 import { EmptyState } from "../../../src/components/EmptyState";
@@ -29,7 +29,7 @@ import { calculateNetScore, calculatePlayingHandicap, getHandicapStrokesForHole 
 import { formatSignedCurrency } from "../../../src/utils/currency";
 import { calculateRelativeMatchPlayHandicaps, getMatchPlayStrokesForHole } from "../../../src/utils/matchPlay";
 import { colors, fontSize, spacing, touchTarget } from "../../../src/constants/theme";
-import type { MatchPlayPlayoffResult, MatchPlaySide, Round, SkinResult } from "../../../src/types";
+import type { MatchPlayPlayoffResult, MatchPlaySide, Round } from "../../../src/types";
 
 export default function RoundOverviewScreen() {
   const insets = useSafeAreaInsets();
@@ -43,7 +43,6 @@ export default function RoundOverviewScreen() {
   const round = activeRound && activeRound.id === roundId ? activeRound : null;
 
   const [displayedHole, setDisplayedHole] = useState(requestedHole ?? round?.currentHole ?? 1);
-  const [phase, setPhase] = useState<"entry" | "result">("entry");
   const [showMenu, setShowMenu] = useState(false);
   const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
   // Entering the playoff is a deliberate action (the "Start Playoff" button
@@ -98,7 +97,7 @@ export default function RoundOverviewScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <AppHeader
         title={round.courseName}
-        subtitle={playoffActive ? matchLabel : `Hole ${displayedHole} of ${round.holeCount}`}
+        subtitle={matchLabel}
         onBack={() => router.replace("/")}
         right={
           <View style={styles.headerActions}>
@@ -130,8 +129,6 @@ export default function RoundOverviewScreen() {
         <MatchPlayFlow
           round={round}
           displayedHole={displayedHole}
-          phase={phase}
-          setPhase={setPhase}
           setDisplayedHole={setDisplayedHole}
           onStartPlayoff={() => {
             useAppStore.getState().startMatchPlayPlayoff();
@@ -142,8 +139,6 @@ export default function RoundOverviewScreen() {
         <SkinsFlow
           round={round}
           displayedHole={displayedHole}
-          phase={phase}
-          setPhase={setPhase}
           setDisplayedHole={setDisplayedHole}
           setHoleScore={setHoleScore}
           submitHole={submitHole}
@@ -178,26 +173,108 @@ export default function RoundOverviewScreen() {
 }
 
 // ---------------------------------------------------------------------------
+// Shared: hole back/forward navigator
+// ---------------------------------------------------------------------------
+
+/** Lets the user step back to an already-played hole to review/edit it, and forward again up to the frontier. */
+function HoleNavigator({
+  label,
+  displayedNumber,
+  totalCount,
+  maxNavigable,
+  onBack,
+  onForward,
+}: {
+  label: string;
+  displayedNumber: number;
+  /** The true total to show in the label (e.g. round.holeCount) — never the navigation frontier. */
+  totalCount: number;
+  /** How far forward the user is allowed to step — the frontier hole/playoff-hole, which can be less than totalCount. */
+  maxNavigable: number;
+  onBack: () => void;
+  onForward: () => void;
+}) {
+  const canGoBack = displayedNumber > 1;
+  const canGoForward = displayedNumber < maxNavigable;
+
+  return (
+    <View style={styles.holeNavRow}>
+      <Pressable
+        onPress={onBack}
+        disabled={!canGoBack}
+        accessibilityRole="button"
+        accessibilityLabel={`Previous ${label.toLowerCase()}`}
+        hitSlop={8}
+        style={styles.holeNavButton}
+      >
+        <Ionicons name="chevron-back" size={24} color={canGoBack ? colors.text : colors.border} />
+      </Pressable>
+      <Text style={styles.holeNavLabel}>
+        {label} {displayedNumber} of {totalCount}
+      </Text>
+      <Pressable
+        onPress={onForward}
+        disabled={!canGoForward}
+        accessibilityRole="button"
+        accessibilityLabel={`Next ${label.toLowerCase()}`}
+        hitSlop={8}
+        style={styles.holeNavButton}
+      >
+        <Ionicons name="chevron-forward" size={24} color={canGoForward ? colors.text : colors.border} />
+      </Pressable>
+    </View>
+  );
+}
+
+function statusHeadline(status: number, sideAName: string, sideBName: string): string {
+  if (status === 0) return "All Square";
+  const leader = status > 0 ? sideAName : sideBName;
+  return `${leader} ${Math.abs(status)} Up`;
+}
+
+// ---------------------------------------------------------------------------
 // Skins
 // ---------------------------------------------------------------------------
+
+/** Builds the toast copy for a just-completed Skins hole. */
+function buildSkinsToastMessage(round: Round, holeNumber: number): string {
+  const skinResults = round.skinsResult?.skinResults ?? [];
+  const result = skinResults.find((r) => r.holeNumber === holeNumber);
+  if (!result) return "Score saved";
+
+  if (result.winnerPlayerId) {
+    const winner = round.players.find((p) => p.id === result.winnerPlayerId);
+    return `${winner?.name ?? "A player"} wins ${result.skinsWon} skin${result.skinsWon > 1 ? "s" : ""}`;
+  }
+
+  if (!round.skinsConfig?.carryoversEnabled) {
+    return "Hole tied — no skin awarded";
+  }
+
+  const stakePerSkinCents = round.skinsConfig?.stakePerSkinCents ?? 1;
+  const skinsCarried = result.carriedIntoNextHoleCents / stakePerSkinCents;
+  const skinWord = skinsCarried === 1 ? "skin" : "skins";
+  const isFinalHole = holeNumber === round.holeCount;
+
+  return isFinalHole
+    ? `Hole tied — ${skinsCarried} ${skinWord} unresolved`
+    : `Hole tied — ${skinsCarried} ${skinWord} carr${skinsCarried === 1 ? "ies" : "y"} to hole ${holeNumber + 1}`;
+}
 
 function SkinsFlow({
   round,
   displayedHole,
-  phase,
-  setPhase,
   setDisplayedHole,
   setHoleScore,
   submitHole,
 }: {
   round: Round;
   displayedHole: number;
-  phase: "entry" | "result";
-  setPhase: (p: "entry" | "result") => void;
   setDisplayedHole: (h: number) => void;
   setHoleScore: (playerId: string, holeNumber: number, grossScore: number | null) => void;
   submitHole: (holeNumber: number) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const playingHandicaps = useMemo(() => {
     const map: Record<string, number> = {};
     round.players.forEach((p) => {
@@ -212,7 +289,6 @@ function SkinsFlow({
   const isFinalHole = displayedHole === round.holeCount;
   const isEditingPastHole = displayedHole < round.currentHole;
   const skinResults = round.skinsResult?.skinResults ?? [];
-  const skinResult = skinResults.find((r) => r.holeNumber === displayedHole) ?? null;
   const isCarryoverHole = skinResults.some(
     (r) => r.holeNumber === displayedHole - 1 && r.carriedIntoNextHoleCents > 0
   );
@@ -221,14 +297,31 @@ function SkinsFlow({
     ? 1 + (skinResults.find((r) => r.holeNumber === displayedHole - 1)?.carriedIntoNextHoleCents ?? 0) / stakePerSkinCents
     : 1;
 
-  const handleNextHole = () => {
+  const handleSubmit = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    useToastStore.getState().showToast(buildSkinsToastMessage(round, displayedHole));
     submitHole(displayedHole);
-    setDisplayedHole(displayedHole + 1);
-    setPhase("entry");
+
+    if (isEditingPastHole) {
+      setDisplayedHole(round.currentHole);
+    } else if (isFinalHole) {
+      router.push(`/round/${round.id}/review`);
+    } else {
+      setDisplayedHole(displayedHole + 1);
+    }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
+      <HoleNavigator
+        label="Hole"
+        displayedNumber={displayedHole}
+        totalCount={round.holeCount}
+        maxNavigable={round.currentHole}
+        onBack={() => setDisplayedHole(displayedHole - 1)}
+        onForward={() => setDisplayedHole(displayedHole + 1)}
+      />
+
       {hole ? (
         <SkinValueCard
           holeNumber={hole.number}
@@ -269,86 +362,14 @@ function SkinsFlow({
         })}
       </View>
 
-      {phase === "entry" ? (
-        <PrimaryButton
-          label="Submit Hole"
-          onPress={() => setPhase("result")}
-          disabled={!isComplete}
-          style={styles.actionButton}
-          accessibilityHint={isComplete ? undefined : "Enter every player's score to continue"}
-        />
-      ) : (
-        <View style={styles.resultPanel}>
-          <SkinsResultSummary skinResult={skinResult} round={round} displayedHole={displayedHole} isFinalHole={isFinalHole} />
-          <View style={styles.resultActions}>
-            <SecondaryButton label="Edit Scores" onPress={() => setPhase("entry")} style={styles.resultButton} />
-            {isEditingPastHole ? (
-              <PrimaryButton
-                label="Back to Review"
-                onPress={() => router.replace(`/round/${round.id}/review`)}
-                style={styles.resultButton}
-              />
-            ) : (
-              <PrimaryButton
-                label={isFinalHole ? "Review Round" : "Next Hole"}
-                onPress={isFinalHole ? () => router.push(`/round/${round.id}/review`) : handleNextHole}
-                style={styles.resultButton}
-              />
-            )}
-          </View>
-        </View>
-      )}
+      <PrimaryButton
+        label={isEditingPastHole ? "Save & Return" : "Submit Hole"}
+        onPress={handleSubmit}
+        disabled={!isComplete}
+        style={styles.actionButton}
+        accessibilityHint={isComplete ? undefined : "Enter every player's score to continue"}
+      />
     </ScrollView>
-  );
-}
-
-function SkinsResultSummary({
-  skinResult,
-  round,
-  displayedHole,
-  isFinalHole,
-}: {
-  skinResult: SkinResult | null;
-  round: Round;
-  displayedHole: number;
-  isFinalHole: boolean;
-}) {
-  if (!skinResult) return null;
-  const stakePerSkinCents = round.skinsConfig?.stakePerSkinCents ?? 0;
-
-  if (skinResult.winnerPlayerId) {
-    const winner = round.players.find((p) => p.id === skinResult.winnerPlayerId);
-    const impactCents = skinResult.skinsWon * stakePerSkinCents * (round.players.length - 1);
-    return (
-      <View>
-        <Text style={styles.resultTitle}>
-          {winner?.name ?? "A player"} wins {skinResult.skinsWon} skin{skinResult.skinsWon > 1 ? "s" : ""}
-        </Text>
-        <Text style={styles.resultSubtitle}>{formatSignedCurrency(impactCents, round.currency)} total impact</Text>
-      </View>
-    );
-  }
-
-  const skinsCarried = skinResult.carriedIntoNextHoleCents / stakePerSkinCents;
-
-  if (!round.skinsConfig?.carryoversEnabled) {
-    return (
-      <View>
-        <Text style={styles.resultTitle}>Hole tied</Text>
-        <Text style={styles.resultSubtitle}>No skin awarded this hole</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View>
-      <Text style={styles.resultTitle}>Hole tied</Text>
-      <Text style={styles.resultSubtitle}>
-        {isFinalHole
-          ? `${skinsCarried} skin${skinsCarried > 1 ? "s" : ""} unresolved — no next hole`
-          : `${skinsCarried} skin${skinsCarried > 1 ? "s" : ""} carry to Hole ${displayedHole + 1}`}
-      </Text>
-    </View>
   );
 }
 
@@ -356,24 +377,47 @@ function SkinsResultSummary({
 // Match Play (regulation, single match or Nassau)
 // ---------------------------------------------------------------------------
 
+/** Builds the toast copy for a just-completed Match Play hole. */
+function buildMatchPlayToastMessage(
+  round: Round,
+  sides: { sideA: MatchPlaySide; sideB: MatchPlaySide },
+  holeNumber: number
+): string {
+  const result = round.matchPlayResult;
+  let holeResult;
+  if (result?.structure === "single_match") {
+    holeResult = result.singleMatch?.holeResults.find((h) => h.holeNumber === holeNumber);
+  } else if (result?.structure === "nassau") {
+    const overall = result.nassauMatches?.find((m) => m.segment === "overall");
+    holeResult = overall?.holeResults.find((h) => h.holeNumber === holeNumber);
+  }
+  if (!holeResult) return "Score saved";
+
+  if (holeResult.winnerSideId) {
+    const winnerName = holeResult.winnerSideId === sides.sideA.id ? sides.sideA.name : sides.sideB.name;
+    if (isMatchPlayDecided(round)) return `${winnerName} wins the match!`;
+    return `${winnerName} wins Hole ${holeNumber} — ${statusHeadline(holeResult.statusAfterHole, sides.sideA.name, sides.sideB.name)}`;
+  }
+
+  return `Hole ${holeNumber} halved — ${statusHeadline(holeResult.statusAfterHole, sides.sideA.name, sides.sideB.name)}`;
+}
+
 function MatchPlayFlow({
   round,
   displayedHole,
-  phase,
-  setPhase,
   setDisplayedHole,
   onStartPlayoff,
 }: {
   round: Round;
   displayedHole: number;
-  phase: "entry" | "result";
-  setPhase: (p: "entry" | "result") => void;
   setDisplayedHole: (h: number) => void;
   onStartPlayoff: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const setHoleScore = useAppStore((s) => s.setHoleScore);
   const config = round.matchPlayConfig;
   const sides = getRoundMatchPlaySides(round);
+  const [phase, setPhase] = useState<"entry" | "decision">("entry");
 
   const relativeHandicaps = useMemo(() => {
     if (!config || !sides) return {};
@@ -393,22 +437,62 @@ function MatchPlayFlow({
 
   const hole = round.holes.find((h) => h.number === displayedHole);
   const isComplete = isHoleComplete(round, displayedHole);
-  const isFinalHole = displayedHole === round.holeCount;
   const isEditingPastHole = displayedHole < round.currentHole;
+
+  const goToHole = (holeNumber: number) => {
+    setPhase("entry");
+    setDisplayedHole(holeNumber);
+  };
+
+  const handleSubmit = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    useToastStore.getState().showToast(buildMatchPlayToastMessage(round, sides, displayedHole));
+
+    if (isEditingPastHole) {
+      useAppStore.getState().submitMatchPlayHole(displayedHole);
+      goToHole(round.currentHole);
+      return;
+    }
+
+    // The match/Nassau result was already recalculated live as scores were
+    // entered, so this reflects the just-completed hole without needing to
+    // touch the store first.
+    const justDecided = isMatchPlayDecided(round);
+    const justAwaitingPlayoff = isAwaitingPlayoff(round);
+
+    if (justDecided || justAwaitingPlayoff) {
+      // Deliberately do NOT advance currentHole here — displayedHole stays
+      // parked on this hole to show the decision panel. Advancing currentHole
+      // without also advancing displayedHole would make isEditingPastHole
+      // look true (currentHole > displayedHole) even though the user hasn't
+      // navigated anywhere, hiding the decision panel behind a phantom
+      // "Save & Return" state. currentHole only moves once the user actually
+      // proceeds (Continue Scoring) — see below.
+      setPhase("decision");
+    } else {
+      useAppStore.getState().submitMatchPlayHole(displayedHole);
+      goToHole(displayedHole + 1);
+    }
+  };
+
   const decided = isMatchPlayDecided(round);
   const awaitingPlayoffStart = isAwaitingPlayoff(round);
-
-  const handleNextHole = () => {
-    useAppStore.getState().submitMatchPlayHole(displayedHole);
-    setDisplayedHole(displayedHole + 1);
-    setPhase("entry");
-  };
+  const showDecisionPanel = phase === "decision" && !isEditingPastHole && (decided || awaitingPlayoffStart);
 
   const singleMatch = round.matchPlayResult?.structure === "single_match" ? round.matchPlayResult.singleMatch : undefined;
   const lastHoleResult = singleMatch?.holeResults[singleMatch.holeResults.length - 1];
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
+      <HoleNavigator
+        label="Hole"
+        displayedNumber={displayedHole}
+        totalCount={round.holeCount}
+        maxNavigable={round.currentHole}
+        onBack={() => goToHole(displayedHole - 1)}
+        onForward={() => goToHole(displayedHole + 1)}
+      />
+
       {config.structure === "single_match" ? (
         <MatchStatusCard
           headline={lastHoleResult ? statusHeadline(lastHoleResult.statusAfterHole, sides.sideA.name, sides.sideB.name) : "All Square"}
@@ -438,10 +522,10 @@ function MatchPlayFlow({
         onChangeScore={(playerId, value) => setHoleScore(playerId, displayedHole, value)}
       />
 
-      {phase === "entry" ? (
+      {!showDecisionPanel ? (
         <PrimaryButton
-          label="Submit Hole"
-          onPress={() => setPhase("result")}
+          label={isEditingPastHole ? "Save & Return" : "Submit Hole"}
+          onPress={handleSubmit}
           disabled={!isComplete}
           style={styles.actionButton}
           accessibilityHint={isComplete ? undefined : "Enter every player's score to continue"}
@@ -450,33 +534,23 @@ function MatchPlayFlow({
         <View style={styles.resultPanel}>
           <MatchPlayResultSummary round={round} sides={sides} displayedHole={displayedHole} />
           <View style={styles.resultActions}>
-            <SecondaryButton label="Edit Scores" onPress={() => setPhase("entry")} style={styles.resultButton} />
-            {isEditingPastHole ? (
-              <PrimaryButton
-                label="Back to Review"
-                onPress={() => router.replace(`/round/${round.id}/review`)}
-                style={styles.resultButton}
-              />
-            ) : decided ? (
+            {decided ? (
               <PrimaryButton
                 label="Finish Round"
                 onPress={() => router.push(`/round/${round.id}/review`)}
                 style={styles.resultButton}
               />
-            ) : awaitingPlayoffStart ? (
-              <PrimaryButton label="Start Playoff" onPress={onStartPlayoff} style={styles.resultButton} />
             ) : (
-              <PrimaryButton
-                label={isFinalHole ? "Review Round" : "Next Hole"}
-                onPress={isFinalHole ? () => router.push(`/round/${round.id}/review`) : handleNextHole}
-                style={styles.resultButton}
-              />
+              <PrimaryButton label="Start Playoff" onPress={onStartPlayoff} style={styles.resultButton} />
             )}
           </View>
-          {!isEditingPastHole && decided ? (
+          {decided ? (
             <SecondaryButton
               label="Continue Scoring for Scorecard"
-              onPress={handleNextHole}
+              onPress={() => {
+                useAppStore.getState().submitMatchPlayHole(displayedHole);
+                goToHole(displayedHole + 1);
+              }}
               style={styles.continueScoringButton}
             />
           ) : null}
@@ -484,12 +558,6 @@ function MatchPlayFlow({
       )}
     </ScrollView>
   );
-}
-
-function statusHeadline(status: number, sideAName: string, sideBName: string): string {
-  if (status === 0) return "All Square";
-  const leader = status > 0 ? sideAName : sideBName;
-  return `${leader} ${Math.abs(status)} Up`;
 }
 
 function NassauSummary({ round, sides }: { round: Round; sides: { sideA: MatchPlaySide; sideB: MatchPlaySide } }) {
@@ -548,14 +616,18 @@ function MatchPlayScoreRows({
     const grossScore = record?.grossScore ?? null;
     const strokes = hole ? getMatchPlayStrokesForHole(relativeHandicaps[playerId] ?? 0, hole.strokeIndex, round.holeCount) : 0;
     const netScore = calculateNetScore(grossScore, strokes);
+    const netLine = showNet
+      ? [strokes > 0 ? `${strokes} stroke${strokes > 1 ? "s" : ""}` : null, netScore !== null ? `net ${netScore}` : null]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
 
     return (
       <View key={playerId} style={rowStyles.row}>
         <View style={rowStyles.identity}>
           {config.mode === "team" ? <TeamBadge name={side === "A" ? sides.sideA.name : sides.sideB.name} side={side} /> : null}
           <Text style={rowStyles.name}>{player.name}</Text>
-          {showNet ? <HandicapStrokeBadge strokes={strokes} /> : null}
-          {showNet && netScore !== null ? <Text style={rowStyles.net}>Net {netScore}</Text> : null}
+          {netLine ? <Text style={rowStyles.net}>{netLine}</Text> : null}
         </View>
         <ScoreStepper
           value={grossScore}
@@ -671,13 +743,27 @@ function nextPlayoffHoleFrom(playoffResults: MatchPlayPlayoffResult[]): number {
 }
 
 function PlayoffFlow({ round }: { round: Round }) {
+  const insets = useSafeAreaInsets();
   const setPlayoffHoleScore = useAppStore((s) => s.setPlayoffHoleScore);
-  const [phase, setPhase] = useState<"entry" | "result">("entry");
+  const [phase, setPhase] = useState<"entry" | "decision">("entry");
   // Buffered exactly like `displayedHole` for regulation holes — must only
   // advance when the user explicitly taps through, never react automatically
   // to a tied playoff hole's score being recalculated (which would otherwise
   // yank them straight to the next hole before they see the tied result).
   const [displayedPlayoffHole, setDisplayedPlayoffHole] = useState(() =>
+    nextPlayoffHoleFrom(round.matchPlayResult?.playoffResults ?? [])
+  );
+  // Unlike regulation (where `round.currentHole` is a store-persisted pointer
+  // that only moves via an explicit submit action), there's no stored
+  // "frontier" for playoff holes — it's normally derived fresh from
+  // `playoffResults`. But `playoffResults` recalculates live as soon as both
+  // scores for a hole are entered, *before* the user taps Submit — so a
+  // purely-derived frontier would advance out from under the "editing past
+  // hole" check the instant the second score lands, hiding the Submit
+  // button behind a phantom "Save & Return" state. Track it as local state
+  // instead, seeded the same way at mount (so resuming mid-playoff still
+  // works) but only ever advanced explicitly inside handleSubmit.
+  const [frontierPlayoffHole, setFrontierPlayoffHole] = useState(() =>
     nextPlayoffHoleFrom(round.matchPlayResult?.playoffResults ?? [])
   );
 
@@ -701,16 +787,52 @@ function PlayoffFlow({ round }: { round: Round }) {
   const isComplete = [...sides.sideA.playerIds, ...sides.sideB.playerIds].every((id) =>
     playoffScores.some((s) => s.playerId === id && s.holeNumber === displayedPlayoffHole && s.grossScore !== null)
   );
+  const isEditingPastPlayoffHole = displayedPlayoffHole < frontierPlayoffHole;
   const thisHoleResult = playoffResults.find((p) => p.playoffHoleNumber === displayedPlayoffHole);
 
-  const handleNextPlayoffHole = () => {
-    useAppStore.getState().submitPlayoffHole();
-    setDisplayedPlayoffHole(displayedPlayoffHole + 1);
+  const goToPlayoffHole = (holeNumber: number) => {
     setPhase("entry");
+    setDisplayedPlayoffHole(holeNumber);
   };
 
+  const handleSubmit = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    useAppStore.getState().submitPlayoffHole();
+
+    if (isEditingPastPlayoffHole) {
+      useToastStore.getState().showToast("Score saved");
+      goToPlayoffHole(frontierPlayoffHole);
+      return;
+    }
+
+    if (thisHoleResult?.winnerSideId) {
+      const winnerName = thisHoleResult.winnerSideId === sides.sideA.id ? sides.sideA.name : sides.sideB.name;
+      useToastStore.getState().showToast(`${winnerName} wins the playoff!`);
+      // Deliberately don't advance the frontier here — see the comment on
+      // frontierPlayoffHole above. The playoff is over regardless, so there's
+      // no "next hole" for it to point to anyway.
+      setPhase("decision");
+    } else {
+      useToastStore
+        .getState()
+        .showToast(`Playoff hole ${displayedPlayoffHole} tied — continues to hole ${displayedPlayoffHole + 1}`);
+      setFrontierPlayoffHole(displayedPlayoffHole + 1);
+      goToPlayoffHole(displayedPlayoffHole + 1);
+    }
+  };
+
+  const showDecisionPanel = phase === "decision" && !isEditingPastPlayoffHole && !!thisHoleResult?.winnerSideId;
+
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
+      <HoleNavigator
+        label="Playoff Hole"
+        displayedNumber={displayedPlayoffHole}
+        totalCount={frontierPlayoffHole}
+        maxNavigable={frontierPlayoffHole}
+        onBack={() => goToPlayoffHole(displayedPlayoffHole - 1)}
+        onForward={() => goToPlayoffHole(displayedPlayoffHole + 1)}
+      />
       <PlayoffBanner playoffHoleNumber={displayedPlayoffHole} />
       <View style={styles.holeCard}>
         <Text style={styles.holeCardLabel}>HOLE {sourceHole.number}</Text>
@@ -729,39 +851,23 @@ function PlayoffFlow({ round }: { round: Round }) {
         onChangeScore={(playerId, value) => setPlayoffHoleScore(playerId, displayedPlayoffHole, value)}
       />
 
-      {phase === "entry" ? (
+      {!showDecisionPanel ? (
         <PrimaryButton
-          label="Submit Hole"
-          onPress={() => setPhase("result")}
+          label={isEditingPastPlayoffHole ? "Save & Return" : "Submit Hole"}
+          onPress={handleSubmit}
           disabled={!isComplete}
           style={styles.actionButton}
         />
       ) : (
         <View style={styles.resultPanel}>
-          {thisHoleResult?.winnerSideId ? (
-            <View>
-              <Text style={styles.resultTitle}>
-                {thisHoleResult.winnerSideId === sides.sideA.id ? sides.sideA.name : sides.sideB.name} wins the playoff
-              </Text>
-              <Text style={styles.resultSubtitle}>Match Complete</Text>
-            </View>
-          ) : (
-            <View>
-              <Text style={styles.resultTitle}>Playoff Hole Tied</Text>
-              <Text style={styles.resultSubtitle}>Continues to Playoff Hole {displayedPlayoffHole + 1}</Text>
-            </View>
-          )}
+          <Text style={styles.resultTitle}>
+            {thisHoleResult?.winnerSideId === sides.sideA.id ? sides.sideA.name : sides.sideB.name} wins the playoff
+          </Text>
+          <Text style={styles.resultSubtitle}>Match Complete</Text>
           <View style={styles.resultActions}>
-            <SecondaryButton label="Edit Scores" onPress={() => setPhase("entry")} style={styles.resultButton} />
             <PrimaryButton
-              label={thisHoleResult?.winnerSideId ? "Finish Round" : `Playoff Hole ${displayedPlayoffHole + 1}`}
-              onPress={() => {
-                if (thisHoleResult?.winnerSideId) {
-                  router.push(`/round/${round.id}/review`);
-                } else {
-                  handleNextPlayoffHole();
-                }
-              }}
+              label="Finish Round"
+              onPress={() => router.push(`/round/${round.id}/review`)}
               style={styles.resultButton}
             />
           </View>
@@ -789,6 +895,23 @@ const styles = StyleSheet.create({
   scroll: {
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
+  },
+  holeNavRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.md,
+  },
+  holeNavButton: {
+    width: touchTarget.min,
+    height: touchTarget.min,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  holeNavLabel: {
+    fontSize: fontSize.md,
+    fontWeight: "700",
+    color: colors.text,
   },
   scoreList: {
     marginTop: spacing.lg,

@@ -6,10 +6,11 @@ import { useAppStore } from "../../../src/store/useAppStore";
 import { AppHeader } from "../../../src/components/AppHeader";
 import { Card } from "../../../src/components/Card";
 import { LeaderboardRow } from "../../../src/components/LeaderboardRow";
-import { SettlementCard } from "../../../src/components/SettlementCard";
+import { SettlementSummaryCard } from "../../../src/components/SettlementSummaryCard";
 import { MatchResultCard } from "../../../src/components/MatchResultCard";
 import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
 import { EmptyState } from "../../../src/components/EmptyState";
+import { ScorecardGrid } from "../../../src/features/rounds/ScorecardGrid";
 import {
   getMatchPlaySideName,
   getPlayerBalances,
@@ -36,6 +37,7 @@ export default function HistoryRoundDetailScreen() {
 
   const balances = getPlayerBalances(round).sort((a, b) => b.balanceCents - a.balanceCents);
   const settlements = getSettlements(round);
+  const totalPotCents = balances.reduce((sum, b) => sum + Math.max(b.balanceCents, 0), 0);
   const date = new Date(round.completedAt ?? round.createdAt).toLocaleDateString(undefined, {
     month: "long",
     day: "numeric",
@@ -47,7 +49,7 @@ export default function HistoryRoundDetailScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <AppHeader title={round.courseName} subtitle={date} onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
         <Text style={styles.meta}>
           {round.players.length} players ·{" "}
           {isMatchPlay
@@ -92,6 +94,10 @@ export default function HistoryRoundDetailScreen() {
         ) : null}
 
         <Card style={styles.card}>
+          <ScorecardGrid round={round} />
+        </Card>
+
+        <Card style={styles.card}>
           <Text style={styles.sectionTitle}>Final balances</Text>
           {balances.map((b, index) => (
             <LeaderboardRow
@@ -106,22 +112,24 @@ export default function HistoryRoundDetailScreen() {
           ))}
         </Card>
 
-        <Card style={styles.card}>
+        <View style={styles.card}>
           <Text style={styles.sectionTitle}>Settlement</Text>
           {settlements.length === 0 ? (
-            <Text style={styles.noSettlements}>No payments needed — everyone's square.</Text>
+            <Card>
+              <Text style={styles.noSettlements}>No payments needed — everyone's square.</Text>
+            </Card>
           ) : (
-            settlements.map((s, i) => (
-              <SettlementCard
-                key={`${s.fromPlayerId}-${s.toPlayerId}-${i}`}
-                fromName={getPlayerName(round, s.fromPlayerId)}
-                toName={getPlayerName(round, s.toPlayerId)}
-                amountCents={s.amountCents}
-                currency={round.currency}
-              />
-            ))
+            <SettlementSummaryCard
+              totalPotCents={totalPotCents}
+              currency={round.currency}
+              entries={settlements.map((s) => ({
+                fromName: getPlayerName(round, s.fromPlayerId),
+                toName: getPlayerName(round, s.toPlayerId),
+                amountCents: s.amountCents,
+              }))}
+            />
           )}
-        </Card>
+        </View>
       </ScrollView>
     </View>
   );

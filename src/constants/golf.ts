@@ -18,6 +18,6 @@ export const CURRENCIES: { code: CurrencyCode; label: string; locale: string }[]
 export const DEFAULT_PLAYER_COLORS = [colorFor(0), colorFor(1), colorFor(2), colorFor(3)];
 
 function colorFor(index: number) {
-  const palette = ["#2F7D57", "#C58A18", "#3B6FA6", "#8A4FBE"];
+  const palette = ["#0D4F35", "#F4B942", "#3B82F6", "#8A4FBE"];
   return palette[index % palette.length];
 }

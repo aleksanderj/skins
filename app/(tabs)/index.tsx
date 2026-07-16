@@ -1,12 +1,10 @@
-import React, { useState } from "react";
+import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAppStore } from "../../src/store/useAppStore";
-import { PrimaryButton } from "../../src/components/PrimaryButton";
 import { SecondaryButton } from "../../src/components/SecondaryButton";
 import { EmptyState } from "../../src/components/EmptyState";
-import { ConfirmationModal } from "../../src/components/ConfirmationModal";
 import { ActiveRoundCard } from "../../src/features/rounds/ActiveRoundCard";
 import { RoundSummaryCard } from "../../src/features/history/RoundSummaryCard";
 import { colors, fontSize, spacing } from "../../src/constants/theme";
@@ -15,37 +13,22 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const activeRound = useAppStore((s) => s.activeRound);
   const roundHistory = useAppStore((s) => s.roundHistory);
-  const abandonRound = useAppStore((s) => s.abandonRound);
   const loadDemoRound = useAppStore((s) => s.loadDemoRound);
   const loadIndividualMatchPlayDemo = useAppStore((s) => s.loadIndividualMatchPlayDemo);
   const loadTeamNassauDemo = useAppStore((s) => s.loadTeamNassauDemo);
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const recentRounds = roundHistory.slice(0, 4);
 
-  const handleStartRound = () => {
-    if (activeRound) {
-      setShowDiscardConfirm(true);
-      return;
-    }
-    router.push("/create-round");
-  };
-
-  const confirmDiscardAndStart = () => {
-    abandonRound();
-    setShowDiscardConfirm(false);
-    router.push("/create-round");
-  };
-
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.hero}>
           <Text style={styles.appName}>Skins</Text>
           <Text style={styles.tagline}>Play the round. We handle the math.</Text>
         </View>
-
-        <PrimaryButton label="Start a Game" onPress={handleStartRound} style={styles.cta} />
 
         {__DEV__ ? (
           <View style={styles.demoButtonGroup}>
@@ -79,21 +62,10 @@ export default function HomeScreen() {
           <EmptyState
             icon="golf-outline"
             title="Ready for your first round"
-            message="Start a Skins or Match Play game to add players, enter scores, and see who owes who."
+            message="Tap Start Game below to add players, enter scores, and see who owes who."
           />
         ) : null}
       </ScrollView>
-
-      <ConfirmationModal
-        visible={showDiscardConfirm}
-        title="Discard active round?"
-        message="Starting a new round will discard your in-progress round. This can't be undone."
-        confirmLabel="Discard & Start New"
-        cancelLabel="Keep Playing"
-        destructive
-        onConfirm={confirmDiscardAndStart}
-        onCancel={() => setShowDiscardConfirm(false)}
-      />
     </View>
   );
 }
@@ -105,7 +77,6 @@ const styles = StyleSheet.create({
   },
   scroll: {
     padding: spacing.lg,
-    paddingBottom: spacing.xxl,
   },
   hero: {
     marginTop: spacing.md,
@@ -120,9 +91,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textSecondary,
     marginTop: 4,
-  },
-  cta: {
-    marginBottom: spacing.md,
   },
   demoButtonGroup: {
     gap: spacing.sm,

@@ -51,7 +51,7 @@ export default function HistoryScreen() {
         <FlatList
           data={filteredRounds}
           keyExtractor={(round) => round.id}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: spacing.lg + insets.bottom }]}
           renderItem={({ item }) => (
             <View style={styles.cardSpacing}>
               <RoundSummaryCard round={item} onPress={() => router.push(`/history/${item.id}`)} />

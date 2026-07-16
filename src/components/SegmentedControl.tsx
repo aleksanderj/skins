@@ -23,7 +23,9 @@ export function SegmentedControl<T extends string>({ options, value, onChange }:
             accessibilityState={{ selected }}
             style={[styles.segment, selected && styles.segmentSelected]}
           >
-            <Text style={[styles.label, selected && styles.labelSelected]}>{option.label}</Text>
+            <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>
+              {option.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -39,7 +41,9 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   segment: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: "auto",
     minHeight: touchTarget.min - 4,
     alignItems: "center",
     justifyContent: "center",

@@ -201,7 +201,7 @@ Run `npm test` — all **118 tests** should pass.
 
 Shared across both formats: `AppHeader`, `PrimaryButton`, `SecondaryButton`, `Card`, `PlayerAvatar`, `PlayerScoreRow`, `ScoreStepper`, `MoneyAmount`, `BalanceBadge`, `HoleProgress`, `LeaderboardRow`, `SettlementCard`, `EmptyState`, `ConfirmationModal`, `SegmentedControl`.
 
-Match Play-specific: `GameFormatCard` (Skins vs. Match Play picker), `MatchStatusCard` (All Square / N Up / Dormie / Complete), `MatchProgressStrip` (hole-by-hole A/B/halved strip with accessible text labels, not symbols alone), `TeamAssignmentCard` + `TeamBadge`, `HandicapStrokeBadge`, `NassauStatusCard`, `MatchResultCard`, `PlayoffBanner`. Skins-specific: `SkinValueCard`.
+Match Play-specific: `GameFormatCard` (Skins vs. Match Play picker), `MatchStatusCard` (All Square / N Up / Dormie / Complete), `MatchProgressStrip` (hole-by-hole A/B/halved strip with accessible text labels, not symbols alone), `TeamAssignmentCard` + `TeamBadge`, `NassauStatusCard`, `MatchResultCard`, `PlayoffBanner`. Skins-specific: `SkinValueCard`.
 
 A few feature-specific compositions (a stake-preset picker shared by both formats, a player-form row with reordering, an expandable course-setup table, a Match Play settings section, a team-assignment section, a round summary card) live next to the feature that owns them under `src/features/` rather than in the generic component library, since they're not reusable outside that context.
 
