@@ -92,6 +92,12 @@ export default function RoundOverviewScreen() {
   // user-triggered latch rather than a live derived value.
   const playoffActive = playoffModeEntered;
   const matchLabel = round.format === "match_play" ? "MATCH PLAY" : "SKINS";
+  // Review's "edit this hole" action deep-links here with a `hole` param and
+  // pushes this screen on top of Review, so it's on the nav stack right below
+  // us. Only in that case should "Save & Return" pop back to Review — normal
+  // in-round navigation (stepping back with the HoleNavigator arrows) should
+  // stay on this screen and return to the current frontier hole instead.
+  const cameFromReview = requestedHole !== null;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -130,6 +136,7 @@ export default function RoundOverviewScreen() {
           round={round}
           displayedHole={displayedHole}
           setDisplayedHole={setDisplayedHole}
+          cameFromReview={cameFromReview}
           onStartPlayoff={() => {
             useAppStore.getState().startMatchPlayPlayoff();
             setPlayoffModeEntered(true);
@@ -142,6 +149,7 @@ export default function RoundOverviewScreen() {
           setDisplayedHole={setDisplayedHole}
           setHoleScore={setHoleScore}
           submitHole={submitHole}
+          cameFromReview={cameFromReview}
         />
       )}
 
@@ -267,12 +275,14 @@ function SkinsFlow({
   setDisplayedHole,
   setHoleScore,
   submitHole,
+  cameFromReview,
 }: {
   round: Round;
   displayedHole: number;
   setDisplayedHole: (h: number) => void;
   setHoleScore: (playerId: string, holeNumber: number, grossScore: number | null) => void;
   submitHole: (holeNumber: number) => void;
+  cameFromReview: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const playingHandicaps = useMemo(() => {
@@ -303,7 +313,11 @@ function SkinsFlow({
     submitHole(displayedHole);
 
     if (isEditingPastHole) {
-      setDisplayedHole(round.currentHole);
+      if (cameFromReview) {
+        router.back();
+      } else {
+        setDisplayedHole(round.currentHole);
+      }
     } else if (isFinalHole) {
       router.push(`/round/${round.id}/review`);
     } else {
@@ -406,11 +420,13 @@ function MatchPlayFlow({
   round,
   displayedHole,
   setDisplayedHole,
+  cameFromReview,
   onStartPlayoff,
 }: {
   round: Round;
   displayedHole: number;
   setDisplayedHole: (h: number) => void;
+  cameFromReview: boolean;
   onStartPlayoff: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -450,7 +466,11 @@ function MatchPlayFlow({
 
     if (isEditingPastHole) {
       useAppStore.getState().submitMatchPlayHole(displayedHole);
-      goToHole(round.currentHole);
+      if (cameFromReview) {
+        router.back();
+      } else {
+        goToHole(round.currentHole);
+      }
       return;
     }
 

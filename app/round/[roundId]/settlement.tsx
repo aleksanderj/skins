@@ -1,13 +1,12 @@
-import React, { useState } from "react";
+import React from "react";
 import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { useAppStore } from "../../../src/store/useAppStore";
 import { Card } from "../../../src/components/Card";
 import { PrimaryButton } from "../../../src/components/PrimaryButton";
 import { SecondaryButton } from "../../../src/components/SecondaryButton";
-import { SettlementCard } from "../../../src/components/SettlementCard";
+import { SettlementSummaryCard } from "../../../src/components/SettlementSummaryCard";
 import { MoneyAmount } from "../../../src/components/MoneyAmount";
 import { PlayerAvatar } from "../../../src/components/PlayerAvatar";
 import { MatchResultCard } from "../../../src/components/MatchResultCard";
@@ -31,7 +30,6 @@ export default function SettlementScreen() {
   const roundHistory = useAppStore((s) => s.roundHistory);
 
   const round = activeRound?.id === roundId ? activeRound : roundHistory.find((r) => r.id === roundId) ?? null;
-  const [settledPayments, setSettledPayments] = useState<Record<number, boolean>>({});
 
   if (!round) {
     return (
@@ -51,11 +49,7 @@ export default function SettlementScreen() {
   const winner = balances[0] && balances[0].balanceCents > 0 ? balances[0] : null;
   const isMatchPlay = round.format === "match_play";
   const sides = isMatchPlay ? getRoundMatchPlaySides(round) : null;
-
-  const togglePayment = (index: number) => {
-    Haptics.selectionAsync().catch(() => {});
-    setSettledPayments((prev) => ({ ...prev, [index]: !prev[index] }));
-  };
+  const totalPotCents = balances.reduce((sum, b) => sum + Math.max(b.balanceCents, 0), 0);
 
   const handleShare = async () => {
     const text = buildShareText(round, balances, settlements);
@@ -132,19 +126,16 @@ export default function SettlementScreen() {
             <Text style={styles.noSettlements}>No payments needed — everyone's square.</Text>
           </Card>
         ) : (
-          settlements.map((s, index) => (
-            <SettlementCard
-              key={`${s.fromPlayerId}-${s.toPlayerId}-${index}`}
-              fromName={getPlayerName(round, s.fromPlayerId)}
-              toName={getPlayerName(round, s.toPlayerId)}
-              amountCents={s.amountCents}
-              currency={round.currency}
-              settled={!!settledPayments[index]}
-              onToggleSettled={() => togglePayment(index)}
-            />
-          ))
+          <SettlementSummaryCard
+            totalPotCents={totalPotCents}
+            currency={round.currency}
+            entries={settlements.map((s) => ({
+              fromName: getPlayerName(round, s.fromPlayerId),
+              toName: getPlayerName(round, s.toPlayerId),
+              amountCents: s.amountCents,
+            }))}
+          />
         )}
-        <Text style={styles.disclaimer}>Payments happen outside the app.</Text>
 
         <Text style={styles.sectionTitle}>Final balances</Text>
         <Card>
@@ -237,13 +228,6 @@ const styles = StyleSheet.create({
   noSettlements: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
-  },
-  disclaimer: {
-    fontSize: fontSize.xs,
-    color: colors.textSecondary,
-    fontStyle: "italic",
-    textAlign: "center",
-    marginTop: spacing.xs,
   },
   balanceRow: {
     flexDirection: "row",

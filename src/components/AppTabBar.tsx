@@ -2,9 +2,9 @@ import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, type Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { colors, fontSize, spacing, touchTarget } from "../constants/theme";
+import { colors, fontSize, touchTarget } from "../constants/theme";
+import { GolfBallOnTeeIcon } from "./GolfBallOnTeeIcon";
 
 const BAR_HEIGHT = 60;
 const FAB_SIZE = 52;
@@ -71,10 +71,7 @@ export function AppTabBar({ state, descriptors, navigation }: TabBarProps) {
             accessibilityHint="Opens the new round setup form"
             style={styles.fabWrapper}
           >
-            <View style={styles.fab}>
-              <Ionicons name="add" size={26} color={colors.white} />
-            </View>
-            <Text style={styles.fabLabel}>Start</Text>
+            <GolfBallOnTeeIcon size={50} />
           </Pressable>
         </View>
         {renderTab(state.routes[2], 2)}
@@ -115,26 +112,5 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: "center",
-  },
-  fab: {
-    width: FAB_SIZE,
-    height: FAB_SIZE,
-    borderRadius: FAB_SIZE / 2,
-    backgroundColor: colors.primaryDark,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
-    borderWidth: 3,
-    borderColor: colors.surface,
-  },
-  fabLabel: {
-    fontSize: fontSize.xs,
-    fontWeight: "700",
-    color: colors.primaryDark,
-    marginTop: 2,
   },
 });
