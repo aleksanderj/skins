@@ -1,5 +1,39 @@
 import { generateDefaultHoles } from "../../utils/course";
 import type { CreateRoundInput } from "./types";
+import type { Hole, PlayerHoleScore } from "../../types";
+
+/** Best to worst, indexed by player position — a gentle overall trend, not a hole-by-hole guarantee. */
+const SKILL_OFFSETS = [-1, 0, 1, 2];
+
+/** Deterministic pseudo-noise in [-2, 2], varying by both player and hole so rank order isn't fixed every hole. */
+function holeNoise(playerIndex: number, holeIndex: number): number {
+  const x = Math.sin(holeIndex * 12.9898 + playerIndex * 78.233) * 43758.5453;
+  const fraction = x - Math.floor(x);
+  return Math.round(fraction * 4) - 2;
+}
+
+/**
+ * Dev-only: fills every hole for every player with a plausible, deterministic
+ * gross score (par + a per-player skill offset + per-player-per-hole noise),
+ * so a "completed round" test fixture doesn't require playing 9 or 18 holes
+ * by hand. The noise is large enough relative to the skill gap that hole-by-
+ * hole results vary and occasionally flip, while the skill trend still
+ * decides the round/match over a full 9 or 18 holes.
+ */
+export function generateDemoScores(players: { id: string }[], holes: Hole[]): PlayerHoleScore[] {
+  const scores: PlayerHoleScore[] = [];
+  holes.forEach((hole, holeIndex) => {
+    players.forEach((player, playerIndex) => {
+      const skill = SKILL_OFFSETS[playerIndex % SKILL_OFFSETS.length];
+      scores.push({
+        playerId: player.id,
+        holeNumber: hole.number,
+        grossScore: Math.max(1, hole.par + skill + holeNoise(playerIndex, holeIndex)),
+      });
+    });
+  });
+  return scores;
+}
 
 /** Dev-only seed data so the primary Skins flow can be exercised without manual setup. */
 export function buildDemoRoundInput(): CreateRoundInput {

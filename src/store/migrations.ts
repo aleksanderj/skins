@@ -1,4 +1,4 @@
-export const CURRENT_SCHEMA_VERSION = 2 as const;
+export const CURRENT_SCHEMA_VERSION = 3 as const;
 
 const DEFAULT_MATCH_PLAY_DEFAULTS = {
   mode: "individual" as const,
@@ -76,5 +76,8 @@ export function migratePersistedState(raw: unknown): unknown {
     activeRound: migrateRound(state.activeRound ?? null),
     roundHistory: Array.isArray(state.roundHistory) ? state.roundHistory.map(migrateRound) : [],
     settings: migrateSettings(state.settings),
+    // Anyone with pre-existing persisted state has already used the app —
+    // never show onboarding retroactively to a returning user.
+    hasCompletedOnboarding: typeof state.hasCompletedOnboarding === "boolean" ? state.hasCompletedOnboarding : true,
   };
 }

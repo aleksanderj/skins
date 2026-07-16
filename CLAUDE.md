@@ -23,7 +23,9 @@ npx jest -t "name of test"           # single test by name
 npx tsc --noEmit      # typecheck (no dedicated lint script is configured)
 ```
 
-There are 125 unit tests: `src/utils/__tests__/` (Skins + shared), `src/utils/matchPlay/__tests__/` (Match Play), `src/store/__tests__/` (persistence migration). Run `npm test` after touching anything in `src/utils/` or `src/store/migrations.ts`.
+There are 127 unit tests: `src/utils/__tests__/` (Skins + shared), `src/utils/matchPlay/__tests__/` (Match Play), `src/store/__tests__/` (persistence migration). Run `npm test` after touching anything in `src/utils/` or `src/store/migrations.ts`.
+
+Native dependencies (`react-native-svg`, `expo-font`, ...) must be added with `npx expo install <package>`, never plain `npm install` — it pins the version to the one matching this project's Expo SDK. A mismatched native module version is a common cause of Expo Go connecting, bundling successfully, then crashing on-device with no JS-visible error.
 
 ## Architecture
 
@@ -32,13 +34,20 @@ There are 125 unit tests: `src/utils/__tests__/` (Skins + shared), `src/utils/ma
 ### Route structure (Expo Router, file-based)
 
 ```
-app/_layout.tsx                 root Stack: (tabs) group + the round flow + global Toast mount
+app/_layout.tsx                 root Stack: (tabs) group + onboarding + the round flow + global
+                                 Toast mount + the post-hydration onboarding redirect (see below)
 app/(tabs)/                     bottom tab navigator with a custom tabBar (AppTabBar) — Home,
-                                 History, Settings, plus a center FAB that opens Create Round
+                                 History, Friends, Settings, plus a center FAB that opens Create Round
   index.tsx                      Home
   history/                       its own nested Stack (list with format filter + read-only detail,
                                   including a full read-only ScorecardGrid)
-  settings.tsx                    grouped Skins Defaults / Match Play Defaults / General
+  friends.tsx                     placeholder screen — exists only so the tab row has 4 real tabs
+                                   and the FAB sits dead-center between them; no feature behind it yet
+  settings.tsx                    grouped Skins Defaults / Match Play Defaults / General, plus a
+                                   Developer entry point (__DEV__ only) into /dev-tools
+app/onboarding.tsx              first-launch 5-slide swipeable intro (see "Onboarding" below)
+app/dev-tools.tsx               dev-only: load an in-progress demo round, or drop a fully-scored
+                                 completed round straight into History (see "Dev Tools" below)
 app/create-round.tsx            modal: format selection + format-specific setup form
 app/round/[roundId]/            the active-round flow, deliberately outside the tab bar
   index.tsx                       hole-by-hole scoring — branches by round.format, a HoleNavigator
@@ -52,15 +61,19 @@ app/round/[roundId]/            the active-round flow, deliberately outside the 
   settlement.tsx                    winner or match-result card, settlement, share, final balances
 ```
 
-`(tabs)` is a route group required to get a real bottom tab bar with Expo Router — a deliberate deviation from the flatter tree suggested in the original product spec (documented in README.md under "Route structure note"). Don't flatten it back out. `AppTabBar` lays the row out as four flex slots (Home, History, an empty FAB slot, Settings) so the absolutely-positioned center FAB never overlaps a tab label — don't go back to centering it directly over the row.
+`(tabs)` is a route group required to get a real bottom tab bar with Expo Router — a deliberate deviation from the flatter tree suggested in the original product spec (documented in README.md under "Route structure note"). Don't flatten it back out. `AppTabBar` lays the row out as five flex slots (Home, History, the FAB slot, Friends, Settings) so the absolutely-positioned center FAB never overlaps a tab label — don't go back to centering it directly over the row. The FAB itself is `GolfBallOnTeeIcon` (`src/components/GolfBallOnTeeIcon.tsx`, built with `react-native-svg`) with the "Start" label lettered onto the ball rather than shown as separate text underneath — it owns its own drop shadow, so don't wrap it in another shadowed container.
+
+Editing a hole from Review deep-links into the scoring screen via `?hole=N`; whether "Save & Return" pops back to Review (`router.back()`) or just returns to the current frontier hole on the same screen depends on whether that param was present at mount (`cameFromReview` in `app/round/[roundId]/index.tsx`) — don't collapse this back into a single always-`router.back()` or always-`setDisplayedHole()` path, the two entry points need different behavior.
 
 ### State: one Zustand store, everything derived from scores
 
-`src/store/useAppStore.ts` holds `activeRound`, `roundHistory`, and `settings`, persisted to `AsyncStorage` via zustand's `persist` middleware. Key invariant: **`Round.scores` (and `matchPlayPlayoffScores` for playoffs) is the only source of truth for game results.** `Round.skinsResult` / `Round.matchPlayResult` are cached derived values — every store action that touches scores or round config calls `recalculateRoundResult` (`src/features/rounds/recalculate.ts`), which dispatches to `calculateSkinResults` or `calculateMatchPlayRoundResult` based on `round.format`. Editing a past hole's score therefore transparently recalculates every later result and balance — never hand-patch a cached result or a balance directly.
+`src/store/useAppStore.ts` holds `activeRound`, `roundHistory`, `settings`, and `hasCompletedOnboarding`, persisted to `AsyncStorage` via zustand's `persist` middleware. Key invariant: **`Round.scores` (and `matchPlayPlayoffScores` for playoffs) is the only source of truth for game results.** `Round.skinsResult` / `Round.matchPlayResult` are cached derived values — every store action that touches scores or round config calls `recalculateRoundResult` (`src/features/rounds/recalculate.ts`), which dispatches to `calculateSkinResults` or `calculateMatchPlayRoundResult` based on `round.format`. Editing a past hole's score therefore transparently recalculates every later result and balance — never hand-patch a cached result or a balance directly. `createRound` and the dev-only demo loaders (below) both funnel through the same private `buildRoundFromInput` helper — don't duplicate that construction logic when adding another way to spin up a `Round`.
 
 `src/store/useToastStore.ts` is a separate, tiny Zustand store (`{ toast, showToast(message), hideToast() }`) for one global toast banner, mounted once as `<Toast />` in `app/_layout.tsx`. Screens never render their own toast instances — call `showToast(message)` and the root-mounted component handles animation/dismissal. `Toast` slides up from the bottom (translateY + opacity, anchored above `insets.bottom`) and auto-dismisses after `VISIBLE_MS`; it does not persist and is unrelated to `useAppStore`.
 
-`src/store/persistenceStorage.ts` wraps `AsyncStorage` with a migration pass (`src/store/migrations.ts`) followed by Zod validation (`src/validation/schemas.ts`) before zustand hydrates. Persisted state carries a `schemaVersion`; `migratePersistedState` upgrades legacy (pre-Match-Play) rounds and settings to the current shape before validation runs. Invalid/corrupt persisted JSON — before or after migration — is discarded (treated as "no saved state") rather than thrown — `didResetCorruptData()` flags this for a one-time banner in `app/_layout.tsx`. **If you change the persisted shape again, add a migration step, don't just bump types** — there are real users' rounds in `AsyncStorage` this has to keep loading.
+`src/store/persistenceStorage.ts` wraps `AsyncStorage` with a migration pass (`src/store/migrations.ts`) followed by Zod validation (`src/validation/schemas.ts`) before zustand hydrates. Persisted state carries a `schemaVersion` (currently 3); `migratePersistedState` upgrades legacy rounds/settings to the current shape before validation runs, and defaults `hasCompletedOnboarding` to `true` for any pre-existing persisted state (a returning user should never see onboarding retroactively) but `false` for a fresh install. Invalid/corrupt persisted JSON — before or after migration — is discarded (treated as "no saved state") rather than thrown — `didResetCorruptData()` flags this for a one-time banner in `app/_layout.tsx`. **If you change the persisted shape again, add a migration step, don't just bump types** — there are real users' rounds in `AsyncStorage` this has to keep loading.
+
+**Onboarding gate:** `app/_layout.tsx` redirects to `/onboarding` with `router.replace`, called from inside the same post-hydration `useEffect` that hides the splash screen — never `SplashScreen.hideAsync()` before that check runs. This is deliberate: doing the redirect while still behind the native splash means the user never sees a one-frame flash of Home before bouncing to onboarding. Don't switch this to a declarative `<Redirect>` rendered in place of the Stack — that would unmount the Stack the redirect needs to navigate within.
 
 ### Round is one type, two formats
 
@@ -97,7 +110,17 @@ Zod schemas in `src/validation/schemas.ts` serve form validation (`app/create-ro
 
 `SegmentedControl` (used by the Gross/Net toggle above and by full-width tab bars like Leaderboard's Match/Scorecard/Balances) sizes its segments with `flexGrow/flexShrink/flexBasis: "auto"`, not a bare `flex: 1` — with `flexBasis: 0` a hug-content container (like the scorecard's toggle) will shrink segments below their label's natural width and wrap the text. Keep `flexBasis: "auto"` if you touch this component.
 
+`src/components/SettlementSummaryCard.tsx` (Total Pot headline + a single card of "X owes Y" rows + a disclaimer pill) is the current settlement design — used by History detail, the round-complete screen, and (with fabricated data) the onboarding "Settle Up" slide. `src/components/SettlementCard.tsx` (the older per-payment card with a settled/unsettled checkbox) is no longer referenced by any screen; don't add new usages of it without checking whether it should just be deleted instead.
+
 Balance/win-loss UI never relies on color alone — it pairs color with an explicit sign and an icon (see `MoneyAmount`, `BalanceBadge`). Keep that pattern for any new financial-status UI.
+
+### Onboarding
+
+`app/onboarding.tsx` is a 5-slide, horizontally-paged intro (`ScrollView` + `pagingEnabled`, dot indicator, Next/Get Started footer button shared across slides rather than duplicated per-slide). Slide content lives in `src/features/onboarding/`: `GradientCourseBackground` is a code-drawn SVG gradient/hills illustration (used where there's no background photo) and `ScoringPreviewCard`/`StandingsPreviewCard`/`SettlementPreviewCard` are static marketing mockups with fabricated data — the latter two directly reuse `LeaderboardRow` and `SettlementSummaryCard` for visual consistency with the real app rather than reimplementing similar-looking UI. The three photo backgrounds (`assets/onboarding-*.png`) were pre-cropped toward their focal content (with `sharp`, not at runtime) before bundling — they're tall portrait source images and RN's `resizeMode="cover"` centers by default, which without cropping put the interesting part of each photo outside the visible frame.
+
+### Dev Tools
+
+`app/dev-tools.tsx`, linked from Settings' Developer section (`__DEV__` only), replaced the old inline demo buttons that used to live on Home. It has two independent capabilities: "Load Active Round" (the original three demo seeds — Skins, Individual Match, Team Nassau — that start a real in-progress round via `createRound`) and "Add Completed Round to History" (`loadCompletedDemoRound` in the store), which fabricates a fully-scored, already-`completed` round and drops it straight into `roundHistory` without going through score entry. The fabricated scores come from `generateDemoScores` (`src/features/rounds/demoRound.ts`): a per-player skill offset plus a deterministic per-player-per-hole pseudo-noise term (a sine-hash, not `Math.random()`, so results are reproducible) — tuned so results are decisive but not a wire-to-wire sweep. If you add a fourth demo scenario, reuse this generator rather than hand-writing scores.
 
 ### Design tokens
 

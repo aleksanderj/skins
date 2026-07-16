@@ -4,6 +4,7 @@ import {
   buildDemoRoundInput,
   buildIndividualMatchPlayDemoInput,
   buildTeamNassauDemoInput,
+  generateDemoScores,
 } from "../features/rounds/demoRound";
 import { recalculateRoundResult } from "../features/rounds/recalculate";
 import type { CreateRoundInput } from "../features/rounds/types";
@@ -53,11 +54,65 @@ function buildTeamsFromInput(input: CreateRoundInput, players: Player[]): MatchP
   ];
 }
 
+/** Pure construction of a fresh, scoreless Round from setup input — shared by createRound and the dev-only demo loaders. */
+function buildRoundFromInput(input: CreateRoundInput): Round {
+  const players: Player[] = input.players.map((p) => ({
+    id: generateId("player"),
+    name: p.name.trim(),
+    handicap: p.handicap,
+  }));
+
+  const defaultName =
+    input.format === "skins" ? `Skins at ${input.courseName}` : `Match Play at ${input.courseName}`;
+
+  const base = {
+    id: generateId("round"),
+    name: input.name.trim() || defaultName,
+    courseName: input.courseName.trim(),
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    holeCount: input.holeCount,
+    currentHole: 1,
+    status: "active" as const,
+    format: input.format,
+    currency: input.currency,
+    players,
+    holes: input.holes,
+    scores: [],
+  };
+
+  if (input.format === "skins") {
+    return {
+      ...base,
+      skinsConfig: {
+        scoringMode: input.scoringMode ?? "gross",
+        stakePerSkinCents: input.stakePerSkinCents ?? 100,
+        carryoversEnabled: input.carryoversEnabled ?? false,
+      },
+    };
+  }
+
+  return {
+    ...base,
+    matchPlayConfig: {
+      mode: input.matchPlayMode ?? "individual",
+      scoringMode: input.matchPlayScoringMode ?? "net",
+      handicapAllowancePercent: input.handicapAllowancePercent ?? 100,
+      stakeCents: input.matchPlayStakeCents ?? 100,
+      tieRule: input.matchPlayTieRule ?? "halve",
+      structure: input.matchPlayStructure ?? "single_match",
+      teams: buildTeamsFromInput(input, players),
+    },
+    matchPlayPlayoffScores: [],
+  };
+}
+
 type AppState = {
   activeRound: Round | null;
   roundHistory: Round[];
   settings: AppSettings;
   hasHydrated: boolean;
+  hasCompletedOnboarding: boolean;
 
   createRound: (input: CreateRoundInput) => void;
   updateRound: (updates: Partial<Round>) => void;
@@ -75,7 +130,9 @@ type AppState = {
   loadDemoRound: () => void;
   loadIndividualMatchPlayDemo: () => void;
   loadTeamNassauDemo: () => void;
+  loadCompletedDemoRound: (kind: "skins" | "individual_match_play" | "team_nassau") => void;
   setHasHydrated: (value: boolean) => void;
+  completeOnboarding: () => void;
 
   // Match Play
   setGameFormat: (format: GameFormat) => void;
@@ -101,60 +158,10 @@ export const useAppStore = create<AppState>()(
       roundHistory: [],
       settings: DEFAULT_SETTINGS,
       hasHydrated: false,
+      hasCompletedOnboarding: false,
 
       createRound: (input) => {
-        const players: Player[] = input.players.map((p) => ({
-          id: generateId("player"),
-          name: p.name.trim(),
-          handicap: p.handicap,
-        }));
-
-        const defaultName =
-          input.format === "skins" ? `Skins at ${input.courseName}` : `Match Play at ${input.courseName}`;
-
-        const base = {
-          id: generateId("round"),
-          name: input.name.trim() || defaultName,
-          courseName: input.courseName.trim(),
-          createdAt: new Date().toISOString(),
-          completedAt: null,
-          holeCount: input.holeCount,
-          currentHole: 1,
-          status: "active" as const,
-          format: input.format,
-          currency: input.currency,
-          players,
-          holes: input.holes,
-          scores: [],
-        };
-
-        let round: Round;
-        if (input.format === "skins") {
-          round = {
-            ...base,
-            skinsConfig: {
-              scoringMode: input.scoringMode ?? "gross",
-              stakePerSkinCents: input.stakePerSkinCents ?? 100,
-              carryoversEnabled: input.carryoversEnabled ?? false,
-            },
-          };
-        } else {
-          round = {
-            ...base,
-            matchPlayConfig: {
-              mode: input.matchPlayMode ?? "individual",
-              scoringMode: input.matchPlayScoringMode ?? "net",
-              handicapAllowancePercent: input.handicapAllowancePercent ?? 100,
-              stakeCents: input.matchPlayStakeCents ?? 100,
-              tieRule: input.matchPlayTieRule ?? "halve",
-              structure: input.matchPlayStructure ?? "single_match",
-              teams: buildTeamsFromInput(input, players),
-            },
-            matchPlayPlayoffScores: [],
-          };
-        }
-
-        set({ activeRound: recalculateRoundResult(round) });
+        set({ activeRound: recalculateRoundResult(buildRoundFromInput(input)) });
       },
 
       updateRound: (updates) => {
@@ -281,7 +288,29 @@ export const useAppStore = create<AppState>()(
         get().createRound(buildTeamNassauDemoInput());
       },
 
+      loadCompletedDemoRound: (kind) => {
+        const input =
+          kind === "skins"
+            ? buildDemoRoundInput()
+            : kind === "individual_match_play"
+              ? buildIndividualMatchPlayDemoInput()
+              : buildTeamNassauDemoInput();
+
+        const round = buildRoundFromInput(input);
+        const playedHoles = round.holes.slice(0, round.holeCount);
+        const completed = recalculateRoundResult({
+          ...round,
+          scores: generateDemoScores(round.players, playedHoles),
+          currentHole: round.holeCount,
+          status: "completed",
+          completedAt: new Date().toISOString(),
+        });
+        set((state) => ({ roundHistory: [completed, ...state.roundHistory] }));
+      },
+
       setHasHydrated: (value) => set({ hasHydrated: value }),
+
+      completeOnboarding: () => set({ hasCompletedOnboarding: true }),
 
       // -----------------------------------------------------------------
       // Match Play
@@ -433,6 +462,7 @@ export const useAppStore = create<AppState>()(
         activeRound: state.activeRound,
         roundHistory: state.roundHistory,
         settings: state.settings,
+        hasCompletedOnboarding: state.hasCompletedOnboarding,
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);

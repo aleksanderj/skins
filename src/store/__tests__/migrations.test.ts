@@ -135,6 +135,7 @@ describe("migratePersistedState", () => {
         },
         currency: "USD",
       },
+      hasCompletedOnboarding: true,
     };
 
     const result = persistedStateSchema.safeParse(state);
@@ -170,6 +171,25 @@ describe("migratePersistedState", () => {
 
     expect(() => persistedStateSchema.safeParse(state)).not.toThrow();
     expect(persistedStateSchema.safeParse(state).success).toBe(false);
+  });
+
+  it("defaults hasCompletedOnboarding to true for pre-existing (returning) users", () => {
+    const migrated = migratePersistedState({
+      activeRound: null,
+      roundHistory: [],
+      settings: legacyV1Settings,
+    }) as any;
+    expect(migrated.hasCompletedOnboarding).toBe(true);
+  });
+
+  it("preserves an explicit hasCompletedOnboarding value already present on legacy state", () => {
+    const migrated = migratePersistedState({
+      activeRound: null,
+      roundHistory: [],
+      settings: legacyV1Settings,
+      hasCompletedOnboarding: false,
+    }) as any;
+    expect(migrated.hasCompletedOnboarding).toBe(false);
   });
 
   it("returns non-object input unchanged rather than throwing", () => {

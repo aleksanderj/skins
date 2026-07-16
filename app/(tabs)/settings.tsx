@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { useAppStore } from "../../src/store/useAppStore";
 import { AppHeader } from "../../src/components/AppHeader";
 import { Card } from "../../src/components/Card";
@@ -121,6 +122,13 @@ export default function SettingsScreen() {
           tone="danger"
           style={styles.resetButton}
         />
+
+        {__DEV__ ? (
+          <>
+            <Text style={styles.groupTitle}>Developer</Text>
+            <SecondaryButton label="Developer Tools" onPress={() => router.push("/dev-tools")} />
+          </>
+        ) : null}
       </ScrollView>
 
       <ConfirmationModal

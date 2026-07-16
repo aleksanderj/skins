@@ -13,9 +13,6 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const activeRound = useAppStore((s) => s.activeRound);
   const roundHistory = useAppStore((s) => s.roundHistory);
-  const loadDemoRound = useAppStore((s) => s.loadDemoRound);
-  const loadIndividualMatchPlayDemo = useAppStore((s) => s.loadIndividualMatchPlayDemo);
-  const loadTeamNassauDemo = useAppStore((s) => s.loadTeamNassauDemo);
 
   const recentRounds = roundHistory.slice(0, 4);
 
@@ -29,14 +26,6 @@ export default function HomeScreen() {
           <Text style={styles.appName}>Skins</Text>
           <Text style={styles.tagline}>Play the round. We handle the math.</Text>
         </View>
-
-        {__DEV__ ? (
-          <View style={styles.demoButtonGroup}>
-            <SecondaryButton label="Load Skins Demo" onPress={loadDemoRound} style={styles.demoButton} />
-            <SecondaryButton label="Load Individual Match Demo" onPress={loadIndividualMatchPlayDemo} style={styles.demoButton} />
-            <SecondaryButton label="Load Team Nassau Demo" onPress={loadTeamNassauDemo} style={styles.demoButton} />
-          </View>
-        ) : null}
 
         {activeRound ? (
           <ActiveRoundCard round={activeRound} onResume={() => router.push(`/round/${activeRound.id}`)} />
@@ -91,13 +80,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textSecondary,
     marginTop: 4,
-  },
-  demoButtonGroup: {
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  demoButton: {
-    marginBottom: 0,
   },
   section: {
     marginTop: spacing.lg,

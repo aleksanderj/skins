@@ -288,10 +288,11 @@ export const appSettingsSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const persistedStateSchema = z.object({
-  schemaVersion: z.literal(2),
+  schemaVersion: z.literal(3),
   activeRound: roundSchema.nullable(),
   roundHistory: z.array(roundSchema),
   settings: appSettingsSchema,
+  hasCompletedOnboarding: z.boolean(),
 });
 
 export type PersistedState = z.infer<typeof persistedStateSchema>;

@@ -13,6 +13,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const hasHydrated = useAppStore((s) => s.hasHydrated);
+  const hasCompletedOnboarding = useAppStore((s) => s.hasCompletedOnboarding);
 
   useEffect(() => {
     if (hasHydrated) {
@@ -33,13 +34,27 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <Toast />
+        {/*
+          Onboarding is gated declaratively via Stack.Protected rather than an
+          imperative router.replace() in a useEffect. The imperative version
+          fired in the same tick the native stack navigator was still mounting
+          and reliably crashed on Android (worked fine on web, where there's
+          no native view hierarchy to race against) — see CLAUDE.md.
+        */}
         <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="create-round" options={{ presentation: "modal" }} />
-          <Stack.Screen name="round/[roundId]/index" />
-          <Stack.Screen name="round/[roundId]/leaderboard" options={{ presentation: "modal" }} />
-          <Stack.Screen name="round/[roundId]/review" />
-          <Stack.Screen name="round/[roundId]/settlement" />
+          <Stack.Protected guard={!hasCompletedOnboarding}>
+            <Stack.Screen name="onboarding" />
+          </Stack.Protected>
+
+          <Stack.Protected guard={hasCompletedOnboarding}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="create-round" options={{ presentation: "modal" }} />
+            <Stack.Screen name="dev-tools" />
+            <Stack.Screen name="round/[roundId]/index" />
+            <Stack.Screen name="round/[roundId]/leaderboard" options={{ presentation: "modal" }} />
+            <Stack.Screen name="round/[roundId]/review" />
+            <Stack.Screen name="round/[roundId]/settlement" />
+          </Stack.Protected>
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
