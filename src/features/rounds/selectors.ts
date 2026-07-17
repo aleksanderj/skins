@@ -1,9 +1,10 @@
-import type { PlayerBalance, Round } from "../../types";
+import type { Challenge, PlayerBalance, Round } from "../../types";
 import { calculatePlayerBalances } from "../../utils/balances";
 import { calculateSettlements } from "../../utils/settlements";
+import { calculateChallengeBalances } from "../../utils/challenges";
 import { getMatchPlaySides } from "../../utils/matchPlay";
 
-export function getPlayerBalances(round: Round): PlayerBalance[] {
+function getBasePlayerBalances(round: Round): PlayerBalance[] {
   if (round.format === "match_play") {
     const balancesCents = round.matchPlayResult?.playerBalancesCents ?? {};
     return round.players.map((p) => ({ playerId: p.id, balanceCents: balancesCents[p.id] ?? 0 }));
@@ -13,6 +14,17 @@ export function getPlayerBalances(round: Round): PlayerBalance[] {
   const skinResults = round.skinsResult?.skinResults ?? [];
   if (!skinsConfig) return round.players.map((p) => ({ playerId: p.id, balanceCents: 0 }));
   return calculatePlayerBalances(round.players, skinResults, skinsConfig.stakePerSkinCents);
+}
+
+/** Format balances (Skins or Match Play) plus any decided challenge (side bet) balances layered on top — the single source of truth every screen reads. */
+export function getPlayerBalances(round: Round): PlayerBalance[] {
+  const base = getBasePlayerBalances(round);
+  const challengeBalances = calculateChallengeBalances(getChallenges(round), round.players);
+  return base.map((b) => ({ ...b, balanceCents: b.balanceCents + (challengeBalances[b.playerId] ?? 0) }));
+}
+
+export function getChallenges(round: Round): Challenge[] {
+  return round.challenges ?? [];
 }
 
 export function getSettlements(round: Round) {

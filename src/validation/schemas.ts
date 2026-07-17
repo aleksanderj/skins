@@ -71,6 +71,20 @@ export const playerHoleScoreSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Challenges (side bets, format-agnostic)
+// ---------------------------------------------------------------------------
+
+export const challengeTypeSchema = z.enum(["closest_to_pin", "longest_drive"]);
+
+export const challengeSchema = z.object({
+  id: z.string(),
+  type: challengeTypeSchema,
+  holeNumber: z.number().int().positive(),
+  stakeCents: z.number().int().positive("Stake must be greater than zero"),
+  winnerPlayerId: z.string().nullable(),
+});
+
+// ---------------------------------------------------------------------------
 // Skins
 // ---------------------------------------------------------------------------
 
@@ -234,6 +248,7 @@ const baseRoundFields = {
   players: z.array(playerSchema),
   holes: z.array(holeSchema),
   scores: z.array(playerHoleScoreSchema),
+  challenges: z.array(challengeSchema).optional(),
 };
 
 export const skinsRoundSchema = z.object({

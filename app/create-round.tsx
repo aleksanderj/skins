@@ -24,6 +24,7 @@ import { MatchPlaySettingsSection } from "../src/features/rounds/MatchPlaySettin
 import { TeamAssignmentSection } from "../src/features/rounds/TeamAssignmentSection";
 import { PlayerFormRow, type PlayerDraft } from "../src/features/rounds/PlayerFormRow";
 import { CourseSetupSection } from "../src/features/rounds/CourseSetupSection";
+import { ChallengesSetupSection } from "../src/features/rounds/ChallengesSetupSection";
 import { generateDefaultHoles } from "../src/utils/course";
 import { generateId } from "../src/utils/id";
 import { colors, fontSize, spacing } from "../src/constants/theme";
@@ -44,6 +45,7 @@ import type {
   MatchPlayTieRule,
   ScoringMode,
 } from "../src/types";
+import type { CreateRoundChallengeInput } from "../src/features/rounds/types";
 import { formatCurrency } from "../src/utils/currency";
 
 function makeBlankPlayer(): PlayerDraft {
@@ -86,6 +88,9 @@ export default function CreateRoundScreen() {
   const [teamBName, setTeamBName] = useState("Team B");
   const [teamAIds, setTeamAIds] = useState<string[]>([]);
   const [teamBIds, setTeamBIds] = useState<string[]>([]);
+
+  // Challenges (side bets) — optional, format-agnostic
+  const [challenges, setChallenges] = useState<CreateRoundChallengeInput[]>([]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [playerErrors, setPlayerErrors] = useState<Record<string, string>>({});
@@ -261,6 +266,7 @@ export default function CreateRoundScreen() {
       matchPlayTieRule,
       teamNames: [teamAName.trim() || "Team A", teamBName.trim() || "Team B"],
       teamAssignments: players.map((p) => ({ teamIndex: (teamAIds.includes(p.id) ? 0 : 1) as 0 | 1 })),
+      challenges,
     });
 
     const newRound = useAppStore.getState().activeRound;
@@ -476,6 +482,17 @@ export default function CreateRoundScreen() {
                 </View>
               </>
             )}
+          </Card>
+
+          <Card style={styles.card}>
+            <Text style={styles.sectionTitle}>Challenges</Text>
+            <ChallengesSetupSection
+              challenges={challenges}
+              onChange={setChallenges}
+              holes={holes}
+              holeCount={holeCount}
+              currency={settings.currency}
+            />
           </Card>
 
           <Text style={styles.disclaimer}>

@@ -23,9 +23,9 @@ npx jest -t "name of test"           # single test by name
 npx tsc --noEmit      # typecheck (no dedicated lint script is configured)
 ```
 
-There are 127 unit tests: `src/utils/__tests__/` (Skins + shared), `src/utils/matchPlay/__tests__/` (Match Play), `src/store/__tests__/` (persistence migration). Run `npm test` after touching anything in `src/utils/` or `src/store/migrations.ts`.
+There are 133 unit tests: `src/utils/__tests__/` (Skins + shared + Challenges), `src/utils/matchPlay/__tests__/` (Match Play), `src/store/__tests__/` (persistence migration). Run `npm test` after touching anything in `src/utils/` or `src/store/migrations.ts`.
 
-Native dependencies (`react-native-svg`, `expo-font`, ...) must be added with `npx expo install <package>`, never plain `npm install` — it pins the version to the one matching this project's Expo SDK. A mismatched native module version is a common cause of Expo Go connecting, bundling successfully, then crashing on-device with no JS-visible error.
+Native dependencies (`react-native-svg`, `expo-font`, `react-native-reanimated`, `react-native-worklets`, ...) must be added with `npx expo install <package>`, never plain `npm install` — it pins the version to the one matching this project's Expo SDK. A mismatched native module version is a common cause of Expo Go connecting, bundling successfully, then crashing on-device with no JS-visible error. `react-native-reanimated`/`react-native-worklets` in particular are **required even though nothing in this codebase imports them directly** — `react-native-screens`' native-stack transitions depend on worklets, and Expo Go has `libworklets.so` linked into its binary regardless of what a project declares, so omitting the JS-side packages produced a deterministic Hermes SIGSEGV (`libworklets.so` → `libhermesvm.so`, `mqt_v_js` thread) on literally the first screen transition on Android — reproduced with a clean SDK 57 template lacking the same two packages, confirmed fixed by adding them at the versions `expo install` resolves. Don't remove them.
 
 ## Architecture
 
@@ -35,14 +35,15 @@ Native dependencies (`react-native-svg`, `expo-font`, ...) must be added with `n
 
 ```
 app/_layout.tsx                 root Stack: (tabs) group + onboarding + the round flow + global
-                                 Toast mount + the post-hydration onboarding redirect (see below)
+                                 Toast mount + the Stack.Protected onboarding gate (see below)
 app/(tabs)/                     bottom tab navigator with a custom tabBar (AppTabBar) — Home,
                                  History, Friends, Settings, plus a center FAB that opens Create Round
   index.tsx                      Home
   history/                       its own nested Stack (list with format filter + read-only detail,
                                   including a full read-only ScorecardGrid)
-  friends.tsx                     placeholder screen — exists only so the tab row has 4 real tabs
-                                   and the FAB sits dead-center between them; no feature behind it yet
+  friends.tsx                     shows a static sample roster (`src/features/friends/sampleFriends.ts`
+                                   + `FriendRow`) — no real friends/contacts backend yet, and also the
+                                   reason the tab row has 4 real tabs so the FAB sits dead-center
   settings.tsx                    grouped Skins Defaults / Match Play Defaults / General, plus a
                                    Developer entry point (__DEV__ only) into /dev-tools
 app/onboarding.tsx              first-launch 5-slide swipeable intro (see "Onboarding" below)
@@ -73,11 +74,19 @@ Editing a hole from Review deep-links into the scoring screen via `?hole=N`; whe
 
 `src/store/persistenceStorage.ts` wraps `AsyncStorage` with a migration pass (`src/store/migrations.ts`) followed by Zod validation (`src/validation/schemas.ts`) before zustand hydrates. Persisted state carries a `schemaVersion` (currently 3); `migratePersistedState` upgrades legacy rounds/settings to the current shape before validation runs, and defaults `hasCompletedOnboarding` to `true` for any pre-existing persisted state (a returning user should never see onboarding retroactively) but `false` for a fresh install. Invalid/corrupt persisted JSON — before or after migration — is discarded (treated as "no saved state") rather than thrown — `didResetCorruptData()` flags this for a one-time banner in `app/_layout.tsx`. **If you change the persisted shape again, add a migration step, don't just bump types** — there are real users' rounds in `AsyncStorage` this has to keep loading.
 
-**Onboarding gate:** `app/_layout.tsx` redirects to `/onboarding` with `router.replace`, called from inside the same post-hydration `useEffect` that hides the splash screen — never `SplashScreen.hideAsync()` before that check runs. This is deliberate: doing the redirect while still behind the native splash means the user never sees a one-frame flash of Home before bouncing to onboarding. Don't switch this to a declarative `<Redirect>` rendered in place of the Stack — that would unmount the Stack the redirect needs to navigate within.
+**Onboarding gate:** `app/_layout.tsx` gates the `onboarding` screen vs. everything else with two `<Stack.Protected guard={...}>` blocks keyed off `hasCompletedOnboarding` — not an imperative `router.replace()`. **This is a hard-won fix, not a style preference:** an earlier version called `router.replace("/onboarding")` inside the post-hydration `useEffect`, which fired while the native stack navigator (`react-native-screens`) was still mounting and caused a 100%-reproducible native crash on Android (worked fine on web, which has no native view hierarchy to race against — see the Hermes/`libworklets.so` SIGSEGV note below). `Stack.Protected` handles the redirect declaratively without navigating during mount. If you add more gated states, extend the `Stack.Protected` groups rather than reintroducing an imperative redirect in a mount-time effect.
+
+**TEMP — onboarding currently shows on every cold start**, not just first launch: `onRehydrateStorage` in `useAppStore.ts` force-resets `hasCompletedOnboarding` to `false` right after hydration, overriding whatever was actually persisted. This is a deliberate, explicitly-marked product decision while the onboarding flow is still being iterated on, not a bug — don't "fix" it by deleting that line without checking with the user first. The line is commented with exactly what to remove to restore normal "only show once" behavior.
 
 ### Round is one type, two formats
 
 `Round.format: "skins" | "match_play"` discriminates which optional sub-object is populated: `skinsConfig`/`skinsResult` or `matchPlayConfig`/`matchPlayResult`/`matchPlayPlayoffScores`. Format-specific fields are never flattened onto the base `Round` — see `src/types/index.ts`. Shared fields (`players`, `holes`, `scores`, `currency`, `holeCount`, ...) work identically across both formats.
+
+### Challenges (side bets, format-agnostic)
+
+`Round.challenges?: Challenge[]` (closest-to-the-pin / longest-drive) is an independent side-bet layer orthogonal to Skins vs. Match Play — the field is optional so legacy persisted rounds validate without a migration. `calculateChallengeBalances` (`src/utils/challenges.ts`) applies the same "loser pays winner" model Skins already uses (every other player owes the stake to whoever's `winnerPlayerId`), and `getPlayerBalances` (`src/features/rounds/selectors.ts`) layers those balances on top of the format balance before any screen ever reads it — Home, History, Leaderboard, and Settlement all pick this up for free without touching them.
+
+**Adding a challenge only happens at round creation** (`ChallengesSetupSection` in `app/create-round.tsx`, backed by `CreateRoundInput.challenges` → `buildRoundFromInput`), not mid-round — a deliberate product decision. The in-round `ChallengesSection` (Leaderboard's "Challenges" tab) is read-mostly: tap a player chip to mark them the winner (tap again to clear), or remove a challenge set up in error; there's no in-round "add" UI or store action. `AddChallengeModal` is shared by both call sites and takes primitive props (`holes`, `holeCount`, `currency`) rather than a `Round`, since no `Round` exists yet during creation.
 
 ### Game logic (`src/utils/`)
 
@@ -116,7 +125,7 @@ Balance/win-loss UI never relies on color alone — it pairs color with an expli
 
 ### Onboarding
 
-`app/onboarding.tsx` is a 5-slide, horizontally-paged intro (`ScrollView` + `pagingEnabled`, dot indicator, Next/Get Started footer button shared across slides rather than duplicated per-slide). Slide content lives in `src/features/onboarding/`: `GradientCourseBackground` is a code-drawn SVG gradient/hills illustration (used where there's no background photo) and `ScoringPreviewCard`/`StandingsPreviewCard`/`SettlementPreviewCard` are static marketing mockups with fabricated data — the latter two directly reuse `LeaderboardRow` and `SettlementSummaryCard` for visual consistency with the real app rather than reimplementing similar-looking UI. The three photo backgrounds (`assets/onboarding-*.png`) were pre-cropped toward their focal content (with `sharp`, not at runtime) before bundling — they're tall portrait source images and RN's `resizeMode="cover"` centers by default, which without cropping put the interesting part of each photo outside the visible frame.
+`app/onboarding.tsx` is a 5-slide, horizontally-paged intro (`ScrollView` + `pagingEnabled`, dot indicator, Next/Get Started footer button shared across slides rather than duplicated per-slide). Slide content lives in `src/features/onboarding/`: `GradientCourseBackground` is a code-drawn SVG gradient/hills illustration (used where there's no background photo), `ImageFadeOverlay` is an SVG gradient absolutely-positioned over the bottom third of every slide's image/illustration area to fade it into the screen background instead of a hard cutoff, and `ScoringPreviewCard`/`StandingsPreviewCard`/`SettlementPreviewCard` are static marketing mockups with fabricated data — the latter two directly reuse `LeaderboardRow` and `SettlementSummaryCard` for visual consistency with the real app rather than reimplementing similar-looking UI. The three photo backgrounds (`assets/onboarding-*.png`) were pre-cropped toward their focal content (with `sharp`, not at runtime) before bundling — they're tall portrait source images and RN's `resizeMode="cover"` centers by default, which without cropping put the interesting part of each photo outside the visible frame.
 
 ### Dev Tools
 

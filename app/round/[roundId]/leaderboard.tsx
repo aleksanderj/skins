@@ -14,6 +14,7 @@ import { MatchProgressStrip, type MatchProgressEntry } from "../../../src/compon
 import { MoneyAmount } from "../../../src/components/MoneyAmount";
 import { EmptyState } from "../../../src/components/EmptyState";
 import { ScorecardGrid } from "../../../src/features/rounds/ScorecardGrid";
+import { ChallengesSection } from "../../../src/features/challenges/ChallengesSection";
 import {
   getPlayerBalances,
   getPlayerName,
@@ -48,7 +49,7 @@ export default function LeaderboardScreen() {
 
 function SkinsLeaderboard({ round }: { round: Round }) {
   const insets = useSafeAreaInsets();
-  const [view, setView] = useState<"balances" | "skins">("balances");
+  const [view, setView] = useState<"balances" | "skins" | "challenges">("balances");
   const balances = [...getPlayerBalances(round)].sort((a, b) => b.balanceCents - a.balanceCents);
   const skinResults = round.skinsResult?.skinResults ?? [];
 
@@ -61,6 +62,7 @@ function SkinsLeaderboard({ round }: { round: Round }) {
           options={[
             { value: "balances", label: "Balances" },
             { value: "skins", label: "Skins" },
+            { value: "challenges", label: "Challenges" },
           ]}
         />
       </View>
@@ -80,33 +82,37 @@ function SkinsLeaderboard({ round }: { round: Round }) {
               />
             ))}
           </Card>
-        ) : skinResults.length === 0 ? (
-          <EmptyState icon="flag-outline" title="No holes submitted yet" message="Skin outcomes will appear here hole by hole." />
+        ) : view === "skins" ? (
+          skinResults.length === 0 ? (
+            <EmptyState icon="flag-outline" title="No holes submitted yet" message="Skin outcomes will appear here hole by hole." />
+          ) : (
+            <Card padded={false}>
+              {skinResults.map((result) => (
+                <View key={result.holeNumber} style={styles.skinRow}>
+                  <View style={styles.skinHoleBadge}>
+                    <Text style={styles.skinHoleNumber}>{result.holeNumber}</Text>
+                  </View>
+                  <View style={styles.skinInfo}>
+                    {result.winnerPlayerId ? (
+                      <Text style={styles.skinWinner}>{getPlayerName(round, result.winnerPlayerId)}</Text>
+                    ) : (
+                      <Text style={styles.skinTied}>Tied</Text>
+                    )}
+                    <Text style={styles.skinMeta}>
+                      {result.skinsWon > 0
+                        ? `${result.skinsWon} skin${result.skinsWon > 1 ? "s" : ""} · ${formatCurrency(result.monetaryValueCents, round.currency)}`
+                        : result.carriedIntoNextHoleCents > 0
+                          ? "Carried forward"
+                          : "No skin awarded"}
+                    </Text>
+                  </View>
+                  {result.carriedIntoNextHoleCents > 0 ? <Ionicons name="repeat" size={18} color={colors.warning} /> : null}
+                </View>
+              ))}
+            </Card>
+          )
         ) : (
-          <Card padded={false}>
-            {skinResults.map((result) => (
-              <View key={result.holeNumber} style={styles.skinRow}>
-                <View style={styles.skinHoleBadge}>
-                  <Text style={styles.skinHoleNumber}>{result.holeNumber}</Text>
-                </View>
-                <View style={styles.skinInfo}>
-                  {result.winnerPlayerId ? (
-                    <Text style={styles.skinWinner}>{getPlayerName(round, result.winnerPlayerId)}</Text>
-                  ) : (
-                    <Text style={styles.skinTied}>Tied</Text>
-                  )}
-                  <Text style={styles.skinMeta}>
-                    {result.skinsWon > 0
-                      ? `${result.skinsWon} skin${result.skinsWon > 1 ? "s" : ""} · ${formatCurrency(result.monetaryValueCents, round.currency)}`
-                      : result.carriedIntoNextHoleCents > 0
-                        ? "Carried forward"
-                        : "No skin awarded"}
-                  </Text>
-                </View>
-                {result.carriedIntoNextHoleCents > 0 ? <Ionicons name="repeat" size={18} color={colors.warning} /> : null}
-              </View>
-            ))}
-          </Card>
+          <ChallengesSection round={round} />
         )}
       </ScrollView>
     </>
@@ -115,7 +121,7 @@ function SkinsLeaderboard({ round }: { round: Round }) {
 
 function MatchPlayLeaderboard({ round }: { round: Round }) {
   const insets = useSafeAreaInsets();
-  const [view, setView] = useState<"match" | "scorecard" | "balances">("match");
+  const [view, setView] = useState<"match" | "scorecard" | "balances" | "challenges">("match");
   const sides = getRoundMatchPlaySides(round);
   const config = round.matchPlayConfig;
 
@@ -139,6 +145,7 @@ function MatchPlayLeaderboard({ round }: { round: Round }) {
             { value: "match", label: "Match" },
             { value: "scorecard", label: "Scorecard" },
             { value: "balances", label: "Balances" },
+            { value: "challenges", label: "Challenges" },
           ]}
         />
       </View>
@@ -148,7 +155,7 @@ function MatchPlayLeaderboard({ round }: { round: Round }) {
           <MatchView round={round} />
         ) : view === "scorecard" ? (
           <ScorecardView round={round} />
-        ) : (
+        ) : view === "balances" ? (
           <View>
             <Text style={styles.confirmedLabel}>Current confirmed balance</Text>
             <Card padded={false}>
@@ -160,6 +167,8 @@ function MatchPlayLeaderboard({ round }: { round: Round }) {
               ))}
             </Card>
           </View>
+        ) : (
+          <ChallengesSection round={round} />
         )}
       </ScrollView>
     </>

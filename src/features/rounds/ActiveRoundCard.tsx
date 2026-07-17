@@ -1,8 +1,9 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Card } from "../../components/Card";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { HoleProgress } from "../../components/HoleProgress";
+import { PlayerAvatar } from "../../components/PlayerAvatar";
 import { colors, fontSize, spacing } from "../../constants/theme";
 import { getMatchPlayStatusHeadline, getRoundWinnerSummary } from "./selectors";
 import type { Round } from "../../types";
@@ -30,10 +31,6 @@ export function ActiveRoundCard({ round, onResume }: Props) {
 
       <View style={styles.statsRow}>
         <View style={styles.stat}>
-          <Text style={styles.statLabel}>Players</Text>
-          <Text style={styles.statValue}>{round.players.length}</Text>
-        </View>
-        <View style={styles.stat}>
           <Text style={styles.statLabel}>{isMatchPlay ? "Status" : "Leader"}</Text>
           <Text style={styles.statValue} numberOfLines={1}>
             {statusText || "All Square"}
@@ -41,7 +38,23 @@ export function ActiveRoundCard({ round, onResume }: Props) {
         </View>
       </View>
 
-      <PrimaryButton label="Resume Round" onPress={onResume} style={styles.button} />
+      <Text style={styles.playersLabel}>{round.players.length} PLAYERS</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.playersRow}
+      >
+        {round.players.map((player, index) => (
+          <View key={player.id} style={styles.playerItem}>
+            <PlayerAvatar name={player.name} index={index} size={48} />
+            <Text style={styles.playerName} numberOfLines={1}>
+              {player.name}
+            </Text>
+          </View>
+        ))}
+      </ScrollView>
+
+      <PrimaryButton label="View Round" onPress={onResume} style={styles.button} />
     </Card>
   );
 }
@@ -85,6 +98,28 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.text,
     marginTop: 2,
+  },
+  playersLabel: {
+    fontSize: fontSize.xs,
+    fontWeight: "800",
+    color: colors.textSecondary,
+    letterSpacing: 0.5,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  playersRow: {
+    gap: spacing.lg,
+    paddingRight: spacing.sm,
+  },
+  playerItem: {
+    alignItems: "center",
+    width: 64,
+  },
+  playerName: {
+    fontSize: fontSize.xs,
+    fontWeight: "600",
+    color: colors.text,
+    marginTop: spacing.xs,
   },
   button: {
     marginTop: spacing.lg,

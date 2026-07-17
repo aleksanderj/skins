@@ -79,6 +79,13 @@ function buildRoundFromInput(input: CreateRoundInput): Round {
     players,
     holes: input.holes,
     scores: [],
+    challenges: (input.challenges ?? []).map((c) => ({
+      id: generateId("challenge"),
+      type: c.type,
+      holeNumber: c.holeNumber,
+      stakeCents: c.stakeCents,
+      winnerPlayerId: null,
+    })),
   };
 
   if (input.format === "skins") {
@@ -133,6 +140,11 @@ type AppState = {
   loadCompletedDemoRound: (kind: "skins" | "individual_match_play" | "team_nassau") => void;
   setHasHydrated: (value: boolean) => void;
   completeOnboarding: () => void;
+
+  // Challenges (side bets) — added at round creation (see buildRoundFromInput);
+  // in-round actions are limited to correcting/resolving what was set up.
+  removeChallenge: (challengeId: string) => void;
+  setChallengeWinner: (challengeId: string, playerId: string | null) => void;
 
   // Match Play
   setGameFormat: (format: GameFormat) => void;
@@ -313,6 +325,32 @@ export const useAppStore = create<AppState>()(
       completeOnboarding: () => set({ hasCompletedOnboarding: true }),
 
       // -----------------------------------------------------------------
+      // Challenges (side bets) — independent of scores/format, so these
+      // don't go through recalculateRoundResult.
+      // -----------------------------------------------------------------
+
+      removeChallenge: (challengeId) => {
+        const round = get().activeRound;
+        if (!round) return;
+        set({
+          activeRound: { ...round, challenges: (round.challenges ?? []).filter((c) => c.id !== challengeId) },
+        });
+      },
+
+      setChallengeWinner: (challengeId, playerId) => {
+        const round = get().activeRound;
+        if (!round) return;
+        set({
+          activeRound: {
+            ...round,
+            challenges: (round.challenges ?? []).map((c) =>
+              c.id === challengeId ? { ...c, winnerPlayerId: playerId } : c
+            ),
+          },
+        });
+      },
+
+      // -----------------------------------------------------------------
       // Match Play
       // -----------------------------------------------------------------
 
@@ -466,6 +504,11 @@ export const useAppStore = create<AppState>()(
       }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
+        // TEMP: always show onboarding on cold start, regardless of a
+        // previously-persisted completion — current product decision while
+        // the onboarding flow is still being iterated on. Revert by
+        // removing this line to restore "only show once."
+        useAppStore.setState({ hasCompletedOnboarding: false });
       },
     }
   )

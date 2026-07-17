@@ -144,6 +144,27 @@ export type MatchPlayRoundResult = {
 };
 
 // ---------------------------------------------------------------------------
+// Challenges (side bets, format-agnostic)
+// ---------------------------------------------------------------------------
+
+export type ChallengeType = "closest_to_pin" | "longest_drive";
+
+/**
+ * A single-hole side bet independent of the round's main format — "closest
+ * to the pin" or "longest drive" on a specific hole. Resolved by picking a
+ * winner (self-reported, like every other score in this app); the stake is
+ * the amount every other player owes the winner, same "loser pays winner"
+ * model Skins already uses — see calculateChallengeBalances.
+ */
+export type Challenge = {
+  id: string;
+  type: ChallengeType;
+  holeNumber: number;
+  stakeCents: number;
+  winnerPlayerId: string | null;
+};
+
+// ---------------------------------------------------------------------------
 // Round
 // ---------------------------------------------------------------------------
 
@@ -178,6 +199,9 @@ export type Round = {
    * the round's real hole numbers.
    */
   matchPlayPlayoffScores?: PlayerHoleScore[];
+
+  /** Side bets set up during the round — independent of format. Optional so legacy persisted rounds without this field still validate. */
+  challenges?: Challenge[];
 };
 
 // ---------------------------------------------------------------------------
