@@ -10,13 +10,18 @@ type Props<T extends string> = {
   onChange: (value: T) => void;
   /** "light" (default) is the iOS-style white-chip-on-gray-track look used for tab bars. "dark" is a solid primaryDark selected chip, e.g. the Scorecard's Gross/Net toggle. */
   variant?: "light" | "dark";
+  /** Smaller padding/font/height — for tight spaces like the Scorecard header, where the toggle shares a row with a title. */
+  compact?: boolean;
 };
 
-export function SegmentedControl<T extends string>({ options, value, onChange, variant = "light" }: Props<T>) {
+export function SegmentedControl<T extends string>({ options, value, onChange, variant = "light", compact }: Props<T>) {
   const isDark = variant === "dark";
 
   return (
-    <View style={[styles.container, isDark && styles.containerDark]} accessibilityRole="tablist">
+    <View
+      style={[styles.container, isDark && styles.containerDark, compact && styles.containerCompact]}
+      accessibilityRole="tablist"
+    >
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -25,10 +30,18 @@ export function SegmentedControl<T extends string>({ options, value, onChange, v
             onPress={() => onChange(option.value)}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            style={[styles.segment, selected && (isDark ? styles.segmentSelectedDark : styles.segmentSelected)]}
+            style={[
+              styles.segment,
+              compact && styles.segmentCompact,
+              selected && (isDark ? styles.segmentSelectedDark : styles.segmentSelected),
+            ]}
           >
             <Text
-              style={[styles.label, selected && (isDark ? styles.labelSelectedDark : styles.labelSelected)]}
+              style={[
+                styles.label,
+                compact && styles.labelCompact,
+                selected && (isDark ? styles.labelSelectedDark : styles.labelSelected),
+              ]}
               numberOfLines={1}
             >
               {option.label}
@@ -50,6 +63,9 @@ const styles = StyleSheet.create({
   containerDark: {
     backgroundColor: colors.background,
   },
+  containerCompact: {
+    padding: 3,
+  },
   segment: {
     flexGrow: 1,
     flexShrink: 1,
@@ -59,6 +75,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
+  },
+  segmentCompact: {
+    minHeight: touchTarget.min - 16,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 4,
   },
   segmentSelected: {
     backgroundColor: colors.surface,
@@ -75,6 +96,9 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontWeight: "600",
     color: colors.textSecondary,
+  },
+  labelCompact: {
+    fontSize: fontSize.xs,
   },
   labelSelected: {
     color: colors.primaryDark,

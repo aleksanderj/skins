@@ -29,19 +29,20 @@ export function ScorecardGrid({ round, onEditHole }: Props) {
 
   return (
     <View>
-      <View style={styles.headerTitleGroup}>
-        <View style={styles.headerIconCircle}>
-          <Ionicons name="clipboard-outline" size={20} color={colors.primaryDark} />
+      <View style={styles.headerRow}>
+        <View style={styles.headerTitleGroup}>
+          <View style={styles.headerIconCircle}>
+            <Ionicons name="clipboard-outline" size={20} color={colors.primaryDark} />
+          </View>
+          <Text style={styles.title} numberOfLines={1}>
+            Scorecard
+          </Text>
         </View>
-        <Text style={styles.title} numberOfLines={1}>
-          Scorecard
-        </Text>
-      </View>
-      <View style={styles.toggleRow}>
         <SegmentedControl
           value={scoreView}
           onChange={setScoreView}
           variant="dark"
+          compact
           options={[
             { value: "gross", label: "Gross Scores" },
             { value: "net", label: "Net Scores" },
@@ -136,10 +137,17 @@ export function ScorecardGrid({ round, onEditHole }: Props) {
 }
 
 const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
   headerTitleGroup: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
+    flexShrink: 1,
   },
   headerIconCircle: {
     width: 44,
@@ -154,10 +162,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.text,
     flexShrink: 1,
-  },
-  toggleRow: {
-    alignSelf: "flex-end",
-    marginTop: spacing.sm,
   },
   hint: {
     fontSize: fontSize.xs,

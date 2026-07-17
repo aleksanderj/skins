@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   result: {
-    alignItems: "flex-end",
+    alignItems: "flex-start",
   },
   resultLabel: {
     fontSize: fontSize.xs,
