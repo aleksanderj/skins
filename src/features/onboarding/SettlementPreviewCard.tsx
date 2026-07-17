@@ -2,9 +2,9 @@ import React from "react";
 import { SettlementSummaryCard } from "../../components/SettlementSummaryCard";
 
 const PREVIEW_ENTRIES = [
-  { fromName: "Blake", toName: "You", amountCents: 4500 },
-  { fromName: "Sam", toName: "You", amountCents: 4500 },
-  { fromName: "Sam", toName: "Blake", amountCents: 4500 },
+  { fromName: "Blake", toName: "You", amountCents: 4500, fromIndex: 1 },
+  { fromName: "Sam", toName: "You", amountCents: 4500, fromIndex: 2 },
+  { fromName: "Sam", toName: "Blake", amountCents: 4500, fromIndex: 2 },
 ];
 
 /** Static "Settle Up Easily" mockup for onboarding — illustrative only, reuses the real settlement summary design. */

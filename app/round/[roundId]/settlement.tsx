@@ -2,12 +2,16 @@ import React from "react";
 import { ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useAppStore } from "../../../src/store/useAppStore";
+import { AppHeader } from "../../../src/components/AppHeader";
 import { Card } from "../../../src/components/Card";
+import { IconCircleButton } from "../../../src/components/IconCircleButton";
 import { PrimaryButton } from "../../../src/components/PrimaryButton";
 import { SecondaryButton } from "../../../src/components/SecondaryButton";
 import { SettlementSummaryCard } from "../../../src/components/SettlementSummaryCard";
 import { MoneyAmount } from "../../../src/components/MoneyAmount";
+import { BalanceBadge } from "../../../src/components/BalanceBadge";
 import { PlayerAvatar } from "../../../src/components/PlayerAvatar";
 import { MatchResultCard } from "../../../src/components/MatchResultCard";
 import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
@@ -15,13 +19,15 @@ import { EmptyState } from "../../../src/components/EmptyState";
 import {
   getMatchPlaySideName,
   getPlayerBalances,
+  getPlayerIndex,
   getPlayerName,
   getRoundMatchPlaySides,
   getSettlements,
 } from "../../../src/features/rounds/selectors";
 import { buildShareText } from "../../../src/features/settlements/shareText";
 import { formatCurrency } from "../../../src/utils/currency";
-import { colors, fontSize, spacing } from "../../../src/constants/theme";
+import { DEFAULT_PLAYER_COLORS } from "../../../src/constants/golf";
+import { colors, fontSize, radius, spacing } from "../../../src/constants/theme";
 
 export default function SettlementScreen() {
   const insets = useSafeAreaInsets();
@@ -61,11 +67,21 @@ export default function SettlementScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.md }]}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <AppHeader
+        title="Round Complete"
+        subtitle={round.courseName}
+        subtitleIcon="location-outline"
+        onBack={() => router.back()}
+        right={
+          <IconCircleButton
+            icon="settings-outline"
+            onPress={() => router.push("/settings")}
+            accessibilityLabel="Settings"
+          />
+        }
+      />
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
-        <Text style={styles.headline}>Round Complete</Text>
-        <Text style={styles.subheadline}>{round.courseName}</Text>
-
         {isMatchPlay && sides && round.matchPlayResult ? (
           <View style={styles.matchSummaryWrapper}>
             {round.matchPlayResult.structure === "nassau" ? (
@@ -105,24 +121,38 @@ export default function SettlementScreen() {
             </Text>
           </View>
         ) : winner ? (
-          <Card style={styles.winnerCard}>
-            <PlayerAvatar name={getPlayerName(round, winner.playerId)} index={0} size={56} />
-            <Text style={styles.winnerName}>{getPlayerName(round, winner.playerId)}</Text>
-            <Text style={styles.winnerSkins}>
-              {winner.skinsWon ?? 0} skin{(winner.skinsWon ?? 0) === 1 ? "" : "s"} won
-            </Text>
-            <MoneyAmount cents={winner.balanceCents} currency={round.currency} size="xl" />
-          </Card>
+          <View style={styles.winnerCard}>
+            <View style={styles.winnerContent}>
+              <View style={styles.winnerTopRow}>
+                <PlayerAvatar name={getPlayerName(round, winner.playerId)} index={getPlayerIndex(round, winner.playerId)} size={56} />
+                <View style={styles.winnerPill}>
+                  <Ionicons name="trophy" size={12} color={colors.primaryDark} />
+                  <Text style={styles.winnerPillText}>WINNER</Text>
+                </View>
+              </View>
+              <Text style={styles.winnerName}>{getPlayerName(round, winner.playerId)}</Text>
+              <Text style={styles.winnerSkins}>
+                {winner.skinsWon ?? 0} skin{(winner.skinsWon ?? 0) === 1 ? "" : "s"} won
+              </Text>
+              <MoneyAmount cents={winner.balanceCents} currency={round.currency} size="xl" />
+            </View>
+            <Ionicons name="trophy" size={72} color="rgba(244, 185, 66, 0.28)" style={styles.winnerTrophyDecoration} />
+          </View>
         ) : (
-          <Card style={styles.winnerCard}>
-            <Text style={styles.winnerName}>All square</Text>
+          <View style={[styles.winnerCard, styles.winnerCardNeutral]}>
+            <Text style={styles.winnerName}>All Square</Text>
             <Text style={styles.winnerSkins}>No net winner this round</Text>
-          </Card>
+          </View>
         )}
 
-        <Text style={styles.sectionTitle}>Who pays whom</Text>
         {settlements.length === 0 ? (
-          <Card>
+          <Card style={styles.sectionCard} padded={false}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeaderIcon}>
+                <Ionicons name="people" size={18} color={colors.primaryDark} />
+              </View>
+              <Text style={styles.sectionTitle}>Who pays whom</Text>
+            </View>
             <Text style={styles.noSettlements}>No payments needed — everyone's square.</Text>
           </Card>
         ) : (
@@ -133,34 +163,56 @@ export default function SettlementScreen() {
               fromName: getPlayerName(round, s.fromPlayerId),
               toName: getPlayerName(round, s.toPlayerId),
               amountCents: s.amountCents,
+              fromIndex: getPlayerIndex(round, s.fromPlayerId),
             }))}
           />
         )}
 
-        <Text style={styles.sectionTitle}>Final balances</Text>
-        <Card>
+        <Card style={styles.sectionCard} padded={false}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionHeaderIcon}>
+              <Ionicons name="wallet-outline" size={18} color={colors.primaryDark} />
+            </View>
+            <Text style={styles.sectionTitle}>Final balances</Text>
+          </View>
           {balances.map((b) => (
             <View key={b.playerId} style={styles.balanceRow}>
-              <Text style={styles.balanceName}>{getPlayerName(round, b.playerId)}</Text>
-              <MoneyAmount cents={b.balanceCents} currency={round.currency} size="md" />
+              <View style={styles.balanceLeft}>
+                <PlayerAvatar name={getPlayerName(round, b.playerId)} index={getPlayerIndex(round, b.playerId)} size={32} singleInitial />
+                <Text style={styles.balanceName}>{getPlayerName(round, b.playerId)}</Text>
+              </View>
+              <BalanceBadge cents={b.balanceCents} currency={round.currency} />
             </View>
           ))}
         </Card>
 
         {!isMatchPlay ? (
-          <>
-            <Text style={styles.sectionTitle}>Skin summary</Text>
-            <Card>
-              {balances.map((b) => (
-                <View key={b.playerId} style={styles.balanceRow}>
-                  <Text style={styles.balanceName}>{getPlayerName(round, b.playerId)}</Text>
-                  <Text style={styles.skinCount}>
-                    {b.skinsWon ?? 0} skin{(b.skinsWon ?? 0) === 1 ? "" : "s"}
-                  </Text>
-                </View>
-              ))}
-            </Card>
-          </>
+          <Card style={styles.sectionCard} padded={false}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionHeaderIcon}>
+                <Ionicons name="flag-outline" size={18} color={colors.primaryDark} />
+              </View>
+              <View>
+                <Text style={styles.sectionTitle}>Skin summary</Text>
+                <Text style={styles.sectionSubtitle}>Based on {round.holeCount} holes</Text>
+              </View>
+            </View>
+            <View style={styles.chipsRow}>
+              {balances.map((b) => {
+                const playerIndex = getPlayerIndex(round, b.playerId);
+                return (
+                  <View key={b.playerId} style={styles.chip}>
+                    <Text style={[styles.chipName, { color: DEFAULT_PLAYER_COLORS[playerIndex % DEFAULT_PLAYER_COLORS.length] }]}>
+                      {getPlayerName(round, b.playerId)}
+                    </Text>
+                    <Text style={styles.chipCount}>
+                      {b.skinsWon ?? 0} skin{(b.skinsWon ?? 0) === 1 ? "" : "s"}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </Card>
         ) : null}
 
         <SecondaryButton label="Share Results" onPress={handleShare} style={styles.actionButton} />
@@ -179,19 +231,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xxl,
   },
-  headline: {
-    fontSize: fontSize.xxl,
-    fontWeight: "800",
-    color: colors.primaryDark,
-    textAlign: "center",
-  },
-  subheadline: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-    textAlign: "center",
-    marginTop: 4,
-    marginBottom: spacing.lg,
-  },
   matchSummaryWrapper: {
     marginBottom: spacing.lg,
   },
@@ -202,50 +241,140 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   winnerCard: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: colors.primaryDark,
+    borderRadius: radius.lg,
     paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
+    overflow: "hidden",
+  },
+  winnerCardNeutral: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  winnerContent: {
+    flexShrink: 1,
+  },
+  winnerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  winnerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.warning,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  winnerPillText: {
+    fontSize: fontSize.xs,
+    fontWeight: "800",
+    color: colors.primaryDark,
+    letterSpacing: 0.5,
   },
   winnerName: {
     fontSize: fontSize.xl,
     fontWeight: "800",
-    color: colors.text,
-    marginTop: spacing.sm,
+    color: colors.white,
   },
   winnerSkins: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
+    color: "rgba(255, 255, 255, 0.75)",
     marginTop: 2,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  winnerTrophyDecoration: {
+    transform: [{ rotate: "-12deg" }],
+    marginLeft: spacing.md,
+  },
+  sectionCard: {
+    marginBottom: spacing.lg,
+    overflow: "hidden",
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  sectionHeaderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.pill,
+    backgroundColor: colors.light,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionTitle: {
-    fontSize: fontSize.lg,
+    fontSize: fontSize.md,
     fontWeight: "700",
     color: colors.text,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+  },
+  sectionSubtitle: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   noSettlements: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
   },
   balanceRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: spacing.sm,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  balanceLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexShrink: 1,
   },
   balanceName: {
     fontSize: fontSize.md,
     fontWeight: "600",
     color: colors.text,
+    flexShrink: 1,
   },
-  skinCount: {
+  chipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  chip: {
+    flexGrow: 1,
+    flexBasis: 70,
+    alignItems: "center",
+    backgroundColor: colors.secondaryBackground,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  chipName: {
     fontSize: fontSize.sm,
+    fontWeight: "700",
+  },
+  chipCount: {
+    fontSize: fontSize.xs,
     color: colors.textSecondary,
-    fontWeight: "600",
+    marginTop: 2,
   },
   actionButton: {
     marginTop: spacing.md,

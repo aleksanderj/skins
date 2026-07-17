@@ -106,6 +106,11 @@ export function getPlayerName(round: Round, playerId: string): string {
   return round.players.find((p) => p.id === playerId)?.name ?? "Unknown player";
 }
 
+/** Stable per-player color/avatar index — a player's position in `round.players`, not their rank in any sorted view. */
+export function getPlayerIndex(round: Round, playerId: string): number {
+  return Math.max(0, round.players.findIndex((p) => p.id === playerId));
+}
+
 /** Resolves a Match Play side id to a display name — a player's own name for Individual, a team name for Team. */
 export function getMatchPlaySideName(round: Round, sideId: string): string {
   if (round.format !== "match_play" || !round.matchPlayConfig) return "Unknown";

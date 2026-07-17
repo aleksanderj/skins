@@ -14,6 +14,7 @@ import { ScorecardGrid } from "../../../src/features/rounds/ScorecardGrid";
 import {
   getMatchPlaySideName,
   getPlayerBalances,
+  getPlayerIndex,
   getPlayerName,
   getRoundMatchPlaySides,
   getSettlements,
@@ -126,6 +127,7 @@ export default function HistoryRoundDetailScreen() {
                 fromName: getPlayerName(round, s.fromPlayerId),
                 toName: getPlayerName(round, s.toPlayerId),
                 amountCents: s.amountCents,
+                fromIndex: getPlayerIndex(round, s.fromPlayerId),
               }))}
             />
           )}
