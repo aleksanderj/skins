@@ -1,7 +1,10 @@
 import React from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { colors, fontSize, radius, spacing, touchTarget } from "../constants/theme";
+
+type IconName = React.ComponentProps<typeof Ionicons>["name"];
 
 type Props = {
   label: string;
@@ -11,6 +14,8 @@ type Props = {
   style?: ViewStyle;
   accessibilityHint?: string;
   haptics?: boolean;
+  /** Trailing icon, e.g. "chevron-forward" for a "go to" style button. */
+  icon?: IconName;
 };
 
 export function PrimaryButton({
@@ -21,6 +26,7 @@ export function PrimaryButton({
   style,
   accessibilityHint,
   haptics = true,
+  icon,
 }: Props) {
   const handlePress = () => {
     if (haptics) {
@@ -45,6 +51,11 @@ export function PrimaryButton({
     >
       {loading ? (
         <ActivityIndicator color={colors.white} />
+      ) : icon ? (
+        <View style={styles.contentRowSpaced}>
+          <Text style={[styles.label, styles.labelWithIcon, disabled && styles.labelDisabled]}>{label}</Text>
+          <Ionicons name={icon} size={20} color={disabled ? colors.disabled : colors.white} />
+        </View>
       ) : (
         <Text style={[styles.label, disabled && styles.labelDisabled]}>{label}</Text>
       )}
@@ -77,5 +88,15 @@ const styles = StyleSheet.create({
   },
   labelDisabled: {
     color: colors.disabled,
+  },
+  contentRowSpaced: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  labelWithIcon: {
+    flex: 1,
+    textAlign: "center",
   },
 });

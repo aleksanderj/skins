@@ -7,10 +7,12 @@ type Props = {
   name: string;
   index?: number;
   size?: number;
+  /** Show just the first letter instead of two-letter initials — for tight spaces like a scorecard row. */
+  singleInitial?: boolean;
 };
 
-export function PlayerAvatar({ name, index = 0, size = 40 }: Props) {
-  const initials = getInitials(name);
+export function PlayerAvatar({ name, index = 0, size = 40, singleInitial }: Props) {
+  const initials = singleInitial ? getInitials(name).slice(0, 1) : getInitials(name);
   const background = DEFAULT_PLAYER_COLORS[index % DEFAULT_PLAYER_COLORS.length];
 
   return (

@@ -11,6 +11,7 @@ import { PrimaryButton } from "../../../src/components/PrimaryButton";
 import { SecondaryButton } from "../../../src/components/SecondaryButton";
 import { ConfirmationModal } from "../../../src/components/ConfirmationModal";
 import { SkinValueCard } from "../../../src/components/SkinValueCard";
+import { HoleInfoCard } from "../../../src/components/HoleInfoCard";
 import { PlayerScoreRow } from "../../../src/components/PlayerScoreRow";
 import { MatchStatusCard } from "../../../src/components/MatchStatusCard";
 import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
@@ -18,7 +19,11 @@ import { TeamBadge } from "../../../src/components/TeamBadge";
 import { PlayoffBanner } from "../../../src/components/PlayoffBanner";
 import { ScoreStepper } from "../../../src/components/ScoreStepper";
 import { EmptyState } from "../../../src/components/EmptyState";
+import { IconCircleButton } from "../../../src/components/IconCircleButton";
+import { ChallengeHoleBadges } from "../../../src/features/challenges/ChallengeHoleBadges";
+import { ChallengeInfoRow } from "../../../src/features/challenges/ChallengeInfoRow";
 import {
+  getChallengesForHole,
   getPlayerBalances,
   getRoundMatchPlaySides,
   isAwaitingPlayoff,
@@ -107,15 +112,11 @@ export default function RoundOverviewScreen() {
         onBack={() => router.replace("/")}
         right={
           <View style={styles.headerActions}>
-            <Pressable
+            <IconCircleButton
+              icon="stats-chart"
               onPress={() => router.push(`/round/${round.id}/leaderboard`)}
-              accessibilityRole="button"
               accessibilityLabel="View leaderboard"
-              style={styles.headerButton}
-              hitSlop={4}
-            >
-              <Ionicons name="stats-chart" size={22} color={colors.text} />
-            </Pressable>
+            />
             <Pressable
               onPress={() => setShowMenu(true)}
               accessibilityRole="button"
@@ -207,29 +208,23 @@ function HoleNavigator({
 
   return (
     <View style={styles.holeNavRow}>
-      <Pressable
+      <IconCircleButton
+        icon="chevron-back"
         onPress={onBack}
         disabled={!canGoBack}
-        accessibilityRole="button"
         accessibilityLabel={`Previous ${label.toLowerCase()}`}
-        hitSlop={8}
-        style={styles.holeNavButton}
-      >
-        <Ionicons name="chevron-back" size={24} color={canGoBack ? colors.text : colors.border} />
-      </Pressable>
+        iconSize={24}
+      />
       <Text style={styles.holeNavLabel}>
         {label} {displayedNumber} of {totalCount}
       </Text>
-      <Pressable
+      <IconCircleButton
+        icon="chevron-forward"
         onPress={onForward}
         disabled={!canGoForward}
-        accessibilityRole="button"
         accessibilityLabel={`Next ${label.toLowerCase()}`}
-        hitSlop={8}
-        style={styles.holeNavButton}
-      >
-        <Ionicons name="chevron-forward" size={24} color={canGoForward ? colors.text : colors.border} />
-      </Pressable>
+        iconSize={24}
+      />
     </View>
   );
 }
@@ -306,6 +301,7 @@ function SkinsFlow({
   const skinsAtStake = isCarryoverHole
     ? 1 + (skinResults.find((r) => r.holeNumber === displayedHole - 1)?.carriedIntoNextHoleCents ?? 0) / stakePerSkinCents
     : 1;
+  const challengesThisHole = getChallengesForHole(round, displayedHole);
 
   const handleSubmit = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -345,8 +341,22 @@ function SkinsFlow({
           stakePerSkinCents={stakePerSkinCents}
           currency={round.currency}
           isCarryover={isCarryoverHole}
+          challengeBadges={
+            challengesThisHole.length > 0 ? (
+              <ChallengeHoleBadges challenges={challengesThisHole} currency={round.currency} />
+            ) : null
+          }
         />
       ) : null}
+
+      {challengesThisHole.map((challenge) => (
+        <ChallengeInfoRow
+          key={challenge.id}
+          challenge={challenge}
+          currency={round.currency}
+          onPressInfo={() => router.push(`/round/${round.id}/leaderboard?tab=challenges`)}
+        />
+      ))}
 
       <View style={styles.scoreList}>
         {round.players.map((player, index) => {
@@ -454,6 +464,7 @@ function MatchPlayFlow({
   const hole = round.holes.find((h) => h.number === displayedHole);
   const isComplete = isHoleComplete(round, displayedHole);
   const isEditingPastHole = displayedHole < round.currentHole;
+  const challengesThisHole = getChallengesForHole(round, displayedHole);
 
   const goToHole = (holeNumber: number) => {
     setPhase("entry");
@@ -524,13 +535,26 @@ function MatchPlayFlow({
       ) : null}
 
       {hole ? (
-        <View style={styles.holeCard}>
-          <Text style={styles.holeCardLabel}>HOLE {hole.number}</Text>
-          <Text style={styles.holeCardDetail}>
-            Par {hole.par} · Stroke Index {hole.strokeIndex}
-          </Text>
-        </View>
+        <HoleInfoCard
+          holeNumber={hole.number}
+          par={hole.par}
+          strokeIndex={hole.strokeIndex}
+          headerRight={
+            challengesThisHole.length > 0 ? (
+              <ChallengeHoleBadges challenges={challengesThisHole} currency={round.currency} />
+            ) : null
+          }
+        />
       ) : null}
+
+      {challengesThisHole.map((challenge) => (
+        <ChallengeInfoRow
+          key={challenge.id}
+          challenge={challenge}
+          currency={round.currency}
+          onPressInfo={() => router.push(`/round/${round.id}/leaderboard?tab=challenges`)}
+        />
+      ))}
 
       <MatchPlayScoreRows
         round={round}
@@ -803,6 +827,7 @@ function PlayoffFlow({ round }: { round: Round }) {
 
   if (!config || !sides || !sourceHole) return null;
 
+  const challengesThisHole = getChallengesForHole(round, sourceHole.number);
   const playoffScores = round.matchPlayPlayoffScores ?? [];
   const isComplete = [...sides.sideA.playerIds, ...sides.sideB.playerIds].every((id) =>
     playoffScores.some((s) => s.playerId === id && s.holeNumber === displayedPlayoffHole && s.grossScore !== null)
@@ -854,12 +879,25 @@ function PlayoffFlow({ round }: { round: Round }) {
         onForward={() => goToPlayoffHole(displayedPlayoffHole + 1)}
       />
       <PlayoffBanner playoffHoleNumber={displayedPlayoffHole} />
-      <View style={styles.holeCard}>
-        <Text style={styles.holeCardLabel}>HOLE {sourceHole.number}</Text>
-        <Text style={styles.holeCardDetail}>
-          Par {sourceHole.par} · Stroke Index {sourceHole.strokeIndex}
-        </Text>
-      </View>
+      <HoleInfoCard
+        holeNumber={sourceHole.number}
+        par={sourceHole.par}
+        strokeIndex={sourceHole.strokeIndex}
+        headerRight={
+          challengesThisHole.length > 0 ? (
+            <ChallengeHoleBadges challenges={challengesThisHole} currency={round.currency} />
+          ) : null
+        }
+      />
+
+      {challengesThisHole.map((challenge) => (
+        <ChallengeInfoRow
+          key={challenge.id}
+          challenge={challenge}
+          currency={round.currency}
+          onPressInfo={() => router.push(`/round/${round.id}/leaderboard?tab=challenges`)}
+        />
+      ))}
 
       <MatchPlayScoreRows
         round={round}
@@ -922,12 +960,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: spacing.md,
   },
-  holeNavButton: {
-    width: touchTarget.min,
-    height: touchTarget.min,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   holeNavLabel: {
     fontSize: fontSize.md,
     fontWeight: "700",
@@ -965,24 +997,6 @@ const styles = StyleSheet.create({
   },
   continueScoringButton: {
     marginTop: spacing.sm,
-  },
-  holeCard: {
-    backgroundColor: colors.primaryDark,
-    borderRadius: 16,
-    padding: spacing.lg,
-    marginTop: spacing.md,
-  },
-  holeCardLabel: {
-    color: colors.light,
-    fontSize: fontSize.sm,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  holeCardDetail: {
-    color: colors.light,
-    fontSize: fontSize.sm,
-    marginTop: 4,
-    opacity: 0.85,
   },
   nassauSummary: {
     marginBottom: spacing.sm,

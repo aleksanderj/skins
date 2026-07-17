@@ -26,7 +26,7 @@ import type { Round } from "../../../src/types";
 
 export default function LeaderboardScreen() {
   const insets = useSafeAreaInsets();
-  const { roundId } = useLocalSearchParams<{ roundId: string }>();
+  const { roundId, tab } = useLocalSearchParams<{ roundId: string; tab?: string }>();
   const activeRound = useAppStore((s) => s.activeRound);
   const round = activeRound && activeRound.id === roundId ? activeRound : null;
 
@@ -42,14 +42,20 @@ export default function LeaderboardScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <AppHeader title={round.format === "match_play" ? "Match" : "Leaderboard"} subtitle={round.courseName} onBack={() => router.back()} />
-      {round.format === "match_play" ? <MatchPlayLeaderboard round={round} /> : <SkinsLeaderboard round={round} />}
+      {round.format === "match_play" ? (
+        <MatchPlayLeaderboard round={round} initialTab={tab} />
+      ) : (
+        <SkinsLeaderboard round={round} initialTab={tab} />
+      )}
     </View>
   );
 }
 
-function SkinsLeaderboard({ round }: { round: Round }) {
+function SkinsLeaderboard({ round, initialTab }: { round: Round; initialTab?: string }) {
   const insets = useSafeAreaInsets();
-  const [view, setView] = useState<"balances" | "skins" | "challenges">("balances");
+  const [view, setView] = useState<"balances" | "skins" | "challenges">(
+    initialTab === "challenges" ? "challenges" : "balances"
+  );
   const balances = [...getPlayerBalances(round)].sort((a, b) => b.balanceCents - a.balanceCents);
   const skinResults = round.skinsResult?.skinResults ?? [];
 
@@ -119,9 +125,11 @@ function SkinsLeaderboard({ round }: { round: Round }) {
   );
 }
 
-function MatchPlayLeaderboard({ round }: { round: Round }) {
+function MatchPlayLeaderboard({ round, initialTab }: { round: Round; initialTab?: string }) {
   const insets = useSafeAreaInsets();
-  const [view, setView] = useState<"match" | "scorecard" | "balances" | "challenges">("match");
+  const [view, setView] = useState<"match" | "scorecard" | "balances" | "challenges">(
+    initialTab === "challenges" ? "challenges" : "match"
+  );
   const sides = getRoundMatchPlaySides(round);
   const config = round.matchPlayConfig;
 

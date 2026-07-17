@@ -27,6 +27,10 @@ export function getChallenges(round: Round): Challenge[] {
   return round.challenges ?? [];
 }
 
+export function getChallengesForHole(round: Round, holeNumber: number): Challenge[] {
+  return getChallenges(round).filter((c) => c.holeNumber === holeNumber);
+}
+
 export function getSettlements(round: Round) {
   return calculateSettlements(getPlayerBalances(round));
 }
@@ -163,35 +167,11 @@ function formatStatusLabel(status: number, sideAName: string, sideBName: string)
   return `${leaderName} ${Math.abs(status)} Up`;
 }
 
-/** Result summary for Home/History cards: {"Alex defeats Ben", "3 & 2"} or {"Nassau", "Won 2 of 3 matches"}. */
+/** Result summary for a single-match round's Home/History card, e.g. {"Alex defeats Ben", "3 & 2"}. Nassau rounds are summarized separately — see getNassauSummary. */
 export function getMatchPlayResultSummary(round: Round): { title: string; subtitle: string } {
   if (round.format !== "match_play" || !round.matchPlayResult) return { title: "", subtitle: "" };
-  const sides = getRoundMatchPlaySides(round);
-  if (!sides) return { title: "", subtitle: "" };
-  const result = round.matchPlayResult;
 
-  if (result.structure === "nassau") {
-    const matches = result.nassauMatches ?? [];
-    const sideAWins = matches.filter((m) => m.winnerSideId === sides.sideA.id).length;
-    const sideBWins = matches.filter((m) => m.winnerSideId === sides.sideB.id).length;
-    const decided = matches.filter((m) => m.completed).length;
-
-    if (sideAWins === 0 && sideBWins === 0) {
-      return {
-        title: "Nassau",
-        subtitle: decided === matches.length ? "All matches halved" : `${decided} of ${matches.length} matches decided`,
-      };
-    }
-    const leader = sideAWins > sideBWins ? sides.sideA.name : sideBWins > sideAWins ? sides.sideB.name : null;
-    return {
-      title: "Nassau",
-      subtitle: leader
-        ? `${leader} won ${Math.max(sideAWins, sideBWins)} of ${matches.length} matches`
-        : `Split ${sideAWins}-${sideBWins}`,
-    };
-  }
-
-  const single = result.singleMatch;
+  const single = round.matchPlayResult.singleMatch;
   if (!single) return { title: "", subtitle: "" };
   if (single.isHalved) return { title: "Match Halved", subtitle: "" };
   if (!single.winnerSideId) return { title: "In progress", subtitle: "" };
@@ -200,4 +180,23 @@ export function getMatchPlayResultSummary(round: Round): { title: string; subtit
   const loserId = single.winnerSideId === single.sideAId ? single.sideBId : single.sideAId;
   const loserName = getMatchPlaySideName(round, loserId);
   return { title: `${winnerName} defeats ${loserName}`, subtitle: single.resultLabel };
+}
+
+/** Nassau-only result breakdown for Home/History cards — null for non-Nassau rounds. Kept separate from getMatchPlayResultSummary because the card renders "leader" and "N of M matches" as two distinct lines rather than one combined subtitle. */
+export function getNassauSummary(
+  round: Round
+): { leaderName: string | null; decidedCount: number; totalCount: number } | null {
+  if (round.format !== "match_play" || round.matchPlayConfig?.structure !== "nassau" || !round.matchPlayResult) {
+    return null;
+  }
+  const sides = getRoundMatchPlaySides(round);
+  if (!sides) return null;
+
+  const matches = round.matchPlayResult.nassauMatches ?? [];
+  const sideAWins = matches.filter((m) => m.winnerSideId === sides.sideA.id).length;
+  const sideBWins = matches.filter((m) => m.winnerSideId === sides.sideB.id).length;
+  const decidedCount = matches.filter((m) => m.completed).length;
+  const leaderName = sideAWins > sideBWins ? sides.sideA.name : sideBWins > sideAWins ? sides.sideB.name : null;
+
+  return { leaderName, decidedCount, totalCount: matches.length };
 }

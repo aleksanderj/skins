@@ -1,27 +1,33 @@
-import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useAppStore } from "../../../src/store/useAppStore";
 import { AppHeader } from "../../../src/components/AppHeader";
 import { Card } from "../../../src/components/Card";
-import { PrimaryButton } from "../../../src/components/PrimaryButton";
+import { IconCircleButton } from "../../../src/components/IconCircleButton";
 import { MoneyAmount } from "../../../src/components/MoneyAmount";
+import { PlayerAvatar } from "../../../src/components/PlayerAvatar";
 import { MatchResultCard } from "../../../src/components/MatchResultCard";
 import { NassauStatusCard } from "../../../src/components/NassauStatusCard";
+import { ConfirmationModal } from "../../../src/components/ConfirmationModal";
 import { EmptyState } from "../../../src/components/EmptyState";
 import { ScorecardGrid } from "../../../src/features/rounds/ScorecardGrid";
+import { ChallengeResultRow } from "../../../src/features/challenges/ChallengeResultRow";
 import {
+  getChallenges,
   getMatchPlaySideName,
   getPlayerBalances,
+  getPlayerName,
   getRoundMatchPlaySides,
   getUnresolvedCarryoverCents,
   isAwaitingPlayoff,
   isRoundReadyToComplete,
 } from "../../../src/features/rounds/selectors";
 import { formatCurrency } from "../../../src/utils/currency";
-import { colors, fontSize, spacing } from "../../../src/constants/theme";
+import { colors, fontSize, radius, spacing } from "../../../src/constants/theme";
 import type { Round } from "../../../src/types";
 
 export default function RoundReviewScreen() {
@@ -29,8 +35,11 @@ export default function RoundReviewScreen() {
   const { roundId } = useLocalSearchParams<{ roundId: string }>();
   const activeRound = useAppStore((s) => s.activeRound);
   const completeRound = useAppStore((s) => s.completeRound);
+  const abandonRound = useAppStore((s) => s.abandonRound);
 
   const round = activeRound && activeRound.id === roundId ? activeRound : null;
+  const [showMenu, setShowMenu] = useState(false);
+  const [showAbandonConfirm, setShowAbandonConfirm] = useState(false);
 
   if (!round) {
     return (
@@ -47,6 +56,17 @@ export default function RoundReviewScreen() {
   const balances = [...getPlayerBalances(round)].sort((a, b) => b.balanceCents - a.balanceCents);
   const isMatchPlay = round.format === "match_play";
   const sides = isMatchPlay ? getRoundMatchPlaySides(round) : null;
+  const challenges = getChallenges(round);
+  const scoringModeLabel = isMatchPlay
+    ? round.matchPlayConfig?.scoringMode === "net"
+      ? "Net"
+      : "Gross"
+    : round.skinsConfig?.scoringMode === "net"
+      ? "Net"
+      : "Gross";
+  const balancesSubtitle = isMatchPlay
+    ? `${scoringModeLabel} Match Play`
+    : `Based on ${round.holeCount} holes · ${scoringModeLabel} Skins`;
 
   const editHole = (holeNumber: number) => {
     router.push(`/round/${round.id}?hole=${holeNumber}`);
@@ -57,9 +77,23 @@ export default function RoundReviewScreen() {
     router.replace(`/round/${round.id}/settlement`);
   };
 
+  const handleAbandon = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+    abandonRound();
+    setShowAbandonConfirm(false);
+    router.replace("/");
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <AppHeader title="Review Round" subtitle={round.courseName} onBack={() => router.back()} />
+      <AppHeader
+        title="Review Round"
+        titleIcon="flag"
+        subtitle={round.courseName}
+        subtitleIcon="location-outline"
+        onBack={() => router.back()}
+        right={<IconCircleButton icon="settings-outline" onPress={() => setShowMenu(true)} accessibilityLabel="Round options" />}
+      />
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: spacing.xxl + insets.bottom }]}>
         {!ready && !awaitingPlayoff ? (
@@ -99,34 +133,124 @@ export default function RoundReviewScreen() {
         </Card>
 
         <Card style={styles.card}>
-          <Text style={styles.sectionTitle}>{isMatchPlay ? "Balances" : "Skins & balances"}</Text>
-          {balances.map((b) => {
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.sectionIconCircle}>
+              <Ionicons name="trophy" size={20} color={colors.primaryDark} />
+            </View>
+            <View style={styles.sectionHeaderText}>
+              <Text style={styles.sectionTitle}>{isMatchPlay ? "Balances" : "Skins & balances"}</Text>
+              <Text style={styles.sectionSubtitle}>{balancesSubtitle}</Text>
+            </View>
+            <Ionicons name="information-circle-outline" size={20} color={colors.textSecondary} />
+          </View>
+          {balances.map((b, index) => {
             const player = round.players.find((p) => p.id === b.playerId);
             return (
               <View key={b.playerId} style={styles.balanceRow}>
-                <View>
-                  <Text style={styles.balanceName}>{player?.name}</Text>
-                  {!isMatchPlay ? (
-                    <Text style={styles.balanceSkins}>
-                      {b.skinsWon ?? 0} skin{(b.skinsWon ?? 0) === 1 ? "" : "s"} won
-                    </Text>
-                  ) : null}
+                <View style={styles.balanceIdentity}>
+                  <PlayerAvatar name={player?.name ?? "?"} index={index} size={36} singleInitial />
+                  <View>
+                    <Text style={styles.balanceName}>{player?.name}</Text>
+                    {!isMatchPlay ? (
+                      <Text style={styles.balanceSkins}>
+                        {b.skinsWon ?? 0} skin{(b.skinsWon ?? 0) === 1 ? "" : "s"} won
+                      </Text>
+                    ) : null}
+                  </View>
                 </View>
-                <MoneyAmount cents={b.balanceCents} currency={round.currency} size="md" />
+                <View style={[styles.balancePill, b.balanceCents < 0 && styles.balancePillNegative]}>
+                  <MoneyAmount cents={b.balanceCents} currency={round.currency} size="md" />
+                </View>
               </View>
             );
           })}
         </Card>
 
-        <PrimaryButton
-          label="Complete Round"
+        {challenges.length > 0 ? (
+          <View style={styles.challengesSection}>
+            {challenges.map((challenge) => (
+              <ChallengeResultRow
+                key={challenge.id}
+                challenge={challenge}
+                hole={round.holes.find((h) => h.number === challenge.holeNumber)}
+                winnerName={challenge.winnerPlayerId ? getPlayerName(round, challenge.winnerPlayerId) : null}
+                currency={round.currency}
+              />
+            ))}
+          </View>
+        ) : null}
+
+        <CompleteRoundButton
           onPress={handleComplete}
           disabled={!ready}
-          style={styles.completeButton}
           accessibilityHint={ready ? undefined : "Finish deciding the round first"}
         />
       </ScrollView>
+
+      <ConfirmationModal
+        visible={showMenu}
+        title="Round options"
+        confirmLabel="Abandon Round"
+        cancelLabel="Close"
+        destructive
+        onConfirm={() => {
+          setShowMenu(false);
+          setShowAbandonConfirm(true);
+        }}
+        onCancel={() => setShowMenu(false)}
+      />
+
+      <ConfirmationModal
+        visible={showAbandonConfirm}
+        title="Abandon this round?"
+        message="Scores entered so far will be lost. This round will not be saved to history."
+        confirmLabel="Abandon Round"
+        cancelLabel="Keep Playing"
+        destructive
+        onConfirm={handleAbandon}
+        onCancel={() => setShowAbandonConfirm(false)}
+      />
     </View>
+  );
+}
+
+function CompleteRoundButton({
+  onPress,
+  disabled,
+  accessibilityHint,
+}: {
+  onPress: () => void;
+  disabled: boolean;
+  accessibilityHint?: string;
+}) {
+  const handlePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    onPress();
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      accessibilityHint={accessibilityHint}
+      style={({ pressed }) => [
+        styles.completeButton,
+        disabled ? styles.completeButtonDisabled : null,
+        pressed && !disabled ? styles.completeButtonPressed : null,
+      ]}
+    >
+      <Ionicons name="flag" size={22} color={disabled ? colors.disabled : colors.white} />
+      <View style={styles.completeButtonText}>
+        <Text style={[styles.completeButtonTitle, disabled && styles.completeButtonTitleDisabled]} numberOfLines={1}>
+          Complete Round
+        </Text>
+        <Text style={[styles.completeButtonSubtitle, disabled && styles.completeButtonTitleDisabled]} numberOfLines={1}>
+          Lock scores and calculate results
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -211,10 +335,33 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 20,
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  sectionIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.light,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionHeaderText: {
+    flex: 1,
+    marginLeft: spacing.md,
+    marginRight: spacing.sm,
+  },
   sectionTitle: {
     fontSize: fontSize.md,
     fontWeight: "700",
     color: colors.text,
+  },
+  sectionSubtitle: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   stakeText: {
     fontSize: fontSize.sm,
@@ -242,6 +389,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  balanceIdentity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   balanceName: {
     fontSize: fontSize.md,
     fontWeight: "700",
@@ -252,7 +404,51 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  balancePill: {
+    backgroundColor: colors.light,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  balancePillNegative: {
+    backgroundColor: "rgba(217,83,79,0.12)",
+  },
+  challengesSection: {
+    marginBottom: spacing.md,
+  },
   completeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.md,
+    backgroundColor: colors.primaryDark,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
+  },
+  completeButtonPressed: {
+    opacity: 0.85,
+  },
+  completeButtonDisabled: {
+    backgroundColor: colors.border,
+  },
+  completeButtonText: {
+    alignItems: "center",
+  },
+  completeButtonTitle: {
+    color: colors.white,
+    fontSize: fontSize.lg,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  completeButtonSubtitle: {
+    color: colors.light,
+    fontSize: fontSize.xs,
+    marginTop: 2,
+    textAlign: "center",
+  },
+  completeButtonTitleDisabled: {
+    color: colors.disabled,
   },
 });

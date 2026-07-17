@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { SegmentedControl } from "../../components/SegmentedControl";
 import { ScoreMark } from "../../components/ScoreMark";
+import { PlayerAvatar } from "../../components/PlayerAvatar";
 import { calculateNetScore, calculatePlayingHandicap, getHandicapStrokesForHole } from "../../utils/handicap";
 import { calculateRelativeMatchPlayHandicaps, getMatchPlayStrokesForHole } from "../../utils/matchPlay";
 import { getScoreToParCategory } from "../../utils/scoreToPar";
@@ -27,11 +29,19 @@ export function ScorecardGrid({ round, onEditHole }: Props) {
 
   return (
     <View>
-      <Text style={styles.title}>Scorecard</Text>
-      <View style={styles.segmentWrapper}>
+      <View style={styles.headerTitleGroup}>
+        <View style={styles.headerIconCircle}>
+          <Ionicons name="clipboard-outline" size={20} color={colors.primaryDark} />
+        </View>
+        <Text style={styles.title} numberOfLines={1}>
+          Scorecard
+        </Text>
+      </View>
+      <View style={styles.toggleRow}>
         <SegmentedControl
           value={scoreView}
           onChange={setScoreView}
+          variant="dark"
           options={[
             { value: "gross", label: "Gross Scores" },
             { value: "net", label: "Net Scores" },
@@ -45,8 +55,9 @@ export function ScorecardGrid({ round, onEditHole }: Props) {
           <View style={[styles.cell, styles.nameCell, { height: ROW_HEIGHT }]}>
             <Text style={styles.holeLabelText}>Hole</Text>
           </View>
-          {round.players.map((p) => (
+          {round.players.map((p, index) => (
             <View key={p.id} style={[styles.cell, styles.nameCell, { height: ROW_HEIGHT }]}>
+              <PlayerAvatar name={p.name} index={index} size={28} singleInitial />
               <Text style={styles.nameCellText} numberOfLines={1}>
                 {p.name}
               </Text>
@@ -125,26 +136,41 @@ export function ScorecardGrid({ round, onEditHole }: Props) {
 }
 
 const styles = StyleSheet.create({
+  headerTitleGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  headerIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.light,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   title: {
     fontSize: fontSize.md,
     fontWeight: "700",
     color: colors.text,
+    flexShrink: 1,
   },
-  segmentWrapper: {
+  toggleRow: {
     alignSelf: "flex-end",
     marginTop: spacing.sm,
-    marginBottom: spacing.sm,
   },
   hint: {
     fontSize: fontSize.xs,
     color: colors.textSecondary,
-    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+    marginLeft: 44 + spacing.md,
   },
   tableRow: {
     flexDirection: "row",
   },
   nameColumn: {
-    width: 90,
+    width: 100,
   },
   cell: {
     alignItems: "center",
@@ -156,10 +182,14 @@ const styles = StyleSheet.create({
     width: 40,
   },
   nameCell: {
-    alignItems: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: spacing.xs,
     paddingRight: spacing.sm,
   },
   nameCellText: {
+    flexShrink: 1,
     fontSize: fontSize.sm,
     fontWeight: "700",
     color: colors.text,

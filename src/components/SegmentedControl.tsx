@@ -8,11 +8,15 @@ type Props<T extends string> = {
   options: Option<T>[];
   value: T;
   onChange: (value: T) => void;
+  /** "light" (default) is the iOS-style white-chip-on-gray-track look used for tab bars. "dark" is a solid primaryDark selected chip, e.g. the Scorecard's Gross/Net toggle. */
+  variant?: "light" | "dark";
 };
 
-export function SegmentedControl<T extends string>({ options, value, onChange }: Props<T>) {
+export function SegmentedControl<T extends string>({ options, value, onChange, variant = "light" }: Props<T>) {
+  const isDark = variant === "dark";
+
   return (
-    <View style={styles.container} accessibilityRole="tablist">
+    <View style={[styles.container, isDark && styles.containerDark]} accessibilityRole="tablist">
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -21,9 +25,12 @@ export function SegmentedControl<T extends string>({ options, value, onChange }:
             onPress={() => onChange(option.value)}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            style={[styles.segment, selected && styles.segmentSelected]}
+            style={[styles.segment, selected && (isDark ? styles.segmentSelectedDark : styles.segmentSelected)]}
           >
-            <Text style={[styles.label, selected && styles.labelSelected]} numberOfLines={1}>
+            <Text
+              style={[styles.label, selected && (isDark ? styles.labelSelectedDark : styles.labelSelected)]}
+              numberOfLines={1}
+            >
               {option.label}
             </Text>
           </Pressable>
@@ -39,6 +46,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.light,
     borderRadius: radius.md,
     padding: 4,
+  },
+  containerDark: {
+    backgroundColor: colors.background,
   },
   segment: {
     flexGrow: 1,
@@ -58,6 +68,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
+  segmentSelectedDark: {
+    backgroundColor: colors.primaryDark,
+  },
   label: {
     fontSize: fontSize.sm,
     fontWeight: "600",
@@ -65,5 +78,9 @@ const styles = StyleSheet.create({
   },
   labelSelected: {
     color: colors.primaryDark,
+  },
+  labelSelectedDark: {
+    color: colors.white,
+    fontWeight: "700",
   },
 });
